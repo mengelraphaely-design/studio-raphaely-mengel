@@ -15,9 +15,10 @@ import {
   BellRing,
   ThumbsUp,
   ThumbsDown,
-  CheckCircle2,
   MessageCircle,
-  RefreshCw
+  RefreshCw,
+  Edit3,
+  CheckCircle2
 } from 'lucide-react';
 import { Appointment, AppointmentStatus } from '../types';
 import { openWhatsApp, getReminderWhatsAppMessage, STUDIO_NAME } from '../utils/whatsapp';
@@ -25,6 +26,7 @@ import { openWhatsApp, getReminderWhatsAppMessage, STUDIO_NAME } from '../utils/
 export const AdminAgenda: React.FC = () => {
   const { 
     appointments, 
+    updateAppointment,
     updateAppointmentStatus, 
     approveAppointment, 
     rejectAppointment, 
@@ -48,6 +50,56 @@ export const AdminAgenda: React.FC = () => {
   const [concludePrice, setConcludePrice] = useState<string>('');
   const [concludeDate, setConcludeDate] = useState<string>('');
   const [concludeNotes, setConcludeNotes] = useState<string>('');
+
+  // Modal de Editar Agendamento (Serviço, Data, Horário, Valor, etc.)
+  const [editingApp, setEditingApp] = useState<Appointment | null>(null);
+  const [editProcedureId, setEditProcedureId] = useState<string>('');
+  const [editDate, setEditDate] = useState<string>('');
+  const [editTime, setEditTime] = useState<string>('');
+  const [editPrice, setEditPrice] = useState<string>('');
+  const [editStatus, setEditStatus] = useState<AppointmentStatus>('confirmado');
+  const [editNotes, setEditNotes] = useState<string>('');
+
+  const handleStartEditApp = (app: Appointment) => {
+    setEditingApp(app);
+    setEditProcedureId(app.procedureId);
+    setEditDate(app.date);
+    setEditTime(app.time);
+    setEditPrice(String(app.price));
+    setEditStatus(app.status);
+    setEditNotes(app.notes || '');
+  };
+
+  const handleProcedureChange = (newProcId: string) => {
+    setEditProcedureId(newProcId);
+    const proc = procedures.find(p => p.id === newProcId);
+    if (proc) {
+      setEditPrice(String(proc.price));
+    }
+  };
+
+  const handleSaveEditApp = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingApp) return;
+
+    const proc = procedures.find(p => p.id === editProcedureId);
+    const procName = proc ? proc.name : editingApp.procedureName;
+    const duration = proc ? proc.durationMinutes : editingApp.durationMinutes;
+    const finalPrice = parseFloat(editPrice) || (proc ? proc.price : editingApp.price);
+
+    updateAppointment(editingApp.id, {
+      procedureId: editProcedureId,
+      procedureName: procName,
+      date: editDate,
+      time: editTime,
+      durationMinutes: duration,
+      price: finalPrice,
+      status: editStatus,
+      notes: editNotes.trim() || undefined
+    });
+
+    setEditingApp(null);
+  };
 
   // Formulário de novo agendamento manual
   const [newClientId, setNewClientId] = useState(clients[0]?.id || '');
@@ -183,7 +235,16 @@ export const AdminAgenda: React.FC = () => {
                     className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors"
                   >
                     <ThumbsUp className="w-4 h-4" />
-                    <span>Aceitar Marcação</span>
+                    <span>Aceitar</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleStartEditApp(app)}
+                    className="py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#8B5A51] border border-amber-200 text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+                    title="Editar Serviço ou Horário antes de aceitar"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    <span>Editar</span>
                   </button>
 
                   <button
@@ -421,6 +482,15 @@ export const AdminAgenda: React.FC = () => {
                   </button>
                 )}
 
+                {/* Editar Serviço / Horário / Data */}
+                <button
+                  onClick={() => handleStartEditApp(app)}
+                  className="p-2.5 rounded-xl bg-[#FAF6F3] hover:bg-[#EFE4DE] text-[#8B5A51] border border-[#EFE4DE] transition-colors"
+                  title="Editar Serviço, Data, Horário ou Observações"
+                >
+                  <Edit3 className="w-4 h-4" />
+                </button>
+
                 {/* Cancelar */}
                 {app.status !== 'cancelado' && (
                   <button
@@ -657,6 +727,162 @@ export const AdminAgenda: React.FC = () => {
                   <span>Confirmar & Lançar no Saldo</span>
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Editar Agendamento (Serviço, Data, Horário, Valor, etc.) */}
+      {editingApp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl border border-[#EFE4DE] relative space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EFE4DE]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-50 text-[#8B5A51] flex items-center justify-center">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-lg font-bold text-[#2C201C]">
+                    Editar Agendamento
+                  </h3>
+                  <p className="text-xs text-[#7E706B]">
+                    Ajuste serviço, data, horário ou detalhes
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingApp(null)}
+                className="p-1.5 rounded-full text-[#7E706B] hover:bg-[#FAF6F3]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Informações da Cliente */}
+            <div className="bg-[#FAF6F3] p-3.5 rounded-2xl border border-[#EFE4DE]">
+              <p className="text-xs font-bold text-[#2C201C]">{editingApp.clientName}</p>
+              <p className="text-[11px] text-[#7E706B]">{editingApp.clientPhone}</p>
+            </div>
+
+            <form onSubmit={handleSaveEditApp} className="space-y-4">
+              
+              {/* Seleção de Procedimento/Serviço */}
+              <div>
+                <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                  Procedimento / Serviço Escolhido
+                </label>
+                <select
+                  value={editProcedureId}
+                  onChange={(e) => handleProcedureChange(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-[#EFE4DE] bg-white text-xs font-semibold text-[#2C201C] focus:outline-hidden focus:border-[#8B5A51]"
+                >
+                  {procedures.map((proc) => (
+                    <option key={proc.id} value={proc.id}>
+                      {proc.name} — R$ {proc.price},00 ({proc.durationMinutes} min)
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[10px] text-[#7E706B] mt-0.5 block">
+                  Altere aqui caso a cliente tenha selecionado o serviço errado.
+                </span>
+              </div>
+
+              {/* Data e Horário */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    Data
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-[#EFE4DE] focus:outline-hidden focus:border-[#8B5A51]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    Horário
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={editTime}
+                    onChange={(e) => setEditTime(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-[#EFE4DE] focus:outline-hidden focus:border-[#8B5A51]"
+                  />
+                </div>
+              </div>
+
+              {/* Valor e Status */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    Valor Cobrado (R$)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[#7E706B] font-bold">R$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={editPrice}
+                      onChange={(e) => setEditPrice(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 text-xs font-bold text-[#2C201C] rounded-xl border border-[#EFE4DE] focus:outline-hidden focus:border-[#8B5A51]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    Status
+                  </label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as AppointmentStatus)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-[#EFE4DE] bg-white text-[#2C201C] font-semibold focus:outline-hidden focus:border-[#8B5A51]"
+                  >
+                    <option value="confirmado">Confirmado</option>
+                    <option value="pendente">Pendente</option>
+                    <option value="concluido">Concluído</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Observações */}
+              <div>
+                <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                  Observações (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Cliente trocou de alongamento para manutenção"
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#EFE4DE] text-[#2C201C] focus:outline-hidden focus:border-[#8B5A51]"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingApp(null)}
+                  className="flex-1 py-2.5 text-xs font-semibold rounded-xl border border-[#EFE4DE] text-[#7E706B] hover:bg-[#FAF6F3]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 text-xs font-bold rounded-xl bg-[#8B5A51] hover:bg-[#73433a] text-white shadow-xs flex items-center justify-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Salvar Alterações</span>
+                </button>
+              </div>
+
             </form>
           </div>
         </div>

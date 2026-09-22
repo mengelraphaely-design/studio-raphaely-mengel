@@ -110,6 +110,7 @@ interface AppContextType {
   syncFromCloud: () => Promise<void>;
   isSyncing: boolean;
   addAppointment: (appointment: Omit<Appointment, 'id'>) => Appointment;
+  updateAppointment: (id: string, updates: Partial<Appointment>) => void;
   updateAppointmentStatus: (
     id: string, 
     status: AppointmentStatus, 
@@ -1003,6 +1004,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateAppointment = (id: string, updates: Partial<Appointment>) => {
+    let updatedApp: Appointment | undefined;
+
+    setAppointments(prev => prev.map(a => {
+      if (a.id === id) {
+        updatedApp = { ...a, ...updates };
+        return updatedApp;
+      }
+      return a;
+    }));
+
+    if (supabase && isSupabaseConfigured && updatedApp) {
+      const rowUpdates: any = {};
+      if (updates.procedureId !== undefined) rowUpdates.procedure_id = updates.procedureId;
+      if (updates.procedureName !== undefined) rowUpdates.procedure_name = updates.procedureName;
+      if (updates.date !== undefined) rowUpdates.date = updates.date;
+      if (updates.time !== undefined) rowUpdates.time = updates.time;
+      if (updates.durationMinutes !== undefined) rowUpdates.duration_minutes = updates.durationMinutes;
+      if (updates.price !== undefined) rowUpdates.price = updates.price;
+      if (updates.status !== undefined) rowUpdates.status = updates.status;
+      if (updates.notes !== undefined) rowUpdates.notes = updates.notes;
+      if (updates.clientName !== undefined) rowUpdates.client_name = updates.clientName;
+      if (updates.clientPhone !== undefined) rowUpdates.client_phone = updates.clientPhone;
+      if (updates.clientBirthDate !== undefined) rowUpdates.client_birth_date = updates.clientBirthDate;
+
+      supabase.from('appointments').update(rowUpdates).eq('id', id).then();
+    }
+
+    if (updatedApp && updatedApp.status === 'concluido') {
+      const txId = `tx-app-${id}`;
+      const newDesc = `${updatedApp.procedureName} - ${updatedApp.clientName}`;
+      updateTransaction(txId, {
+        description: newDesc,
+        amount: updatedApp.price,
+        date: updatedApp.date
+      });
+    }
+  };
+
   const markReminderSent = (id: string) => {
     setAppointments(prev => prev.map(a => (a.id === id ? { ...a, reminderSent: true } : a)));
 
@@ -1222,6 +1262,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateClientAvatar,
         requestOnlineBooking,
         addAppointment,
+        updateAppointment,
         approveAppointment,
         rejectAppointment,
         updateAppointmentStatus,
