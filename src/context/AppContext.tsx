@@ -24,6 +24,26 @@ import {
   initialTransactions,
   initialFeedbacks
 } from '../data/initialData';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { 
+  rescueLocalDataToSupabase, 
+  fetchInitialSupabaseData,
+  mapAppointmentToRow,
+  mapRowToAppointment,
+  mapClientToRow,
+  mapRowToClient,
+  mapTransactionToRow,
+  mapRowToTransaction,
+  mapFeedbackToRow,
+  mapRowToFeedback,
+  mapSettingsToRow,
+  mapRowToSettings
+} from '../lib/supabaseSync';
+import { 
+  playNotificationBell, 
+  showBrowserNotification, 
+  requestBrowserNotificationPermission 
+} from '../utils/notifications';
 
 interface BirthdayAlert {
   client: Client;
@@ -106,69 +126,91 @@ interface AppContextType {
   retentionAlerts: RetentionAlert[];
   newClients: Client[];
   resetDataToDefault: () => void;
+  // Notificações
+  triggerBellNotification: () => void;
+  enableBrowserNotifications: () => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const STORAGE_KEY_PREFIX = 'rapha_v7_clean_zero';
-
-  // Limpeza automática de caches antigos da demonstração
-  if (typeof window !== 'undefined') {
-    try {
-      Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('rapha_') && !key.startsWith(STORAGE_KEY_PREFIX)) {
-          localStorage.removeItem(key);
-        }
-      });
-    } catch {
-      // noop
-    }
-  }
+  const STORAGE_KEY_PREFIX = 'rapha_v8_cloud_sync';
 
   const [clients, setClients] = useState<Client[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_clients`);
-    return saved ? JSON.parse(saved) : initialClients;
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_clients`);
+      return saved ? JSON.parse(saved) : initialClients;
+    } catch {
+      return initialClients;
+    }
   });
 
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_appointments`);
-    return saved ? JSON.parse(saved) : initialAppointments;
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_appointments`);
+      return saved ? JSON.parse(saved) : initialAppointments;
+    } catch {
+      return initialAppointments;
+    }
   });
 
   const [procedures, setProcedures] = useState<Procedure[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_procedures`);
-    return saved ? JSON.parse(saved) : initialProcedures;
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_procedures`);
+      return saved ? JSON.parse(saved) : initialProcedures;
+    } catch {
+      return initialProcedures;
+    }
   });
 
   const [scheduleSettings, setScheduleSettings] = useState<ScheduleSettings>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_schedule_settings`);
-    return saved ? JSON.parse(saved) : initialScheduleSettings;
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_schedule_settings`);
+      return saved ? JSON.parse(saved) : initialScheduleSettings;
+    } catch {
+      return initialScheduleSettings;
+    }
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_transactions`);
-    return saved ? JSON.parse(saved) : initialTransactions;
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_transactions`);
+      return saved ? JSON.parse(saved) : initialTransactions;
+    } catch {
+      return initialTransactions;
+    }
   });
 
   const [feedbacks, setFeedbacks] = useState<Feedback[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_feedbacks`);
-    return saved ? JSON.parse(saved) : initialFeedbacks;
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_feedbacks`);
+      return saved ? JSON.parse(saved) : initialFeedbacks;
+    } catch {
+      return initialFeedbacks;
+    }
   });
 
   const [currentClient, setCurrentClient] = useState<Client | null>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_current_client`);
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_current_client`);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
 
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_is_admin`);
-    return saved ? JSON.parse(saved) : false;
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_is_admin`);
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
   });
 
   const [activeTab, setActiveTab] = useState<MainTab>('portfolio');
 
-  // Sincronizar com localStorage
+  // Sincronizar com localStorage para resiliência offline imediata
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}_clients`, JSON.stringify(clients));
   }, [clients]);
@@ -205,37 +247,168 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(`${STORAGE_KEY_PREFIX}_is_admin`, JSON.stringify(isAdminLoggedIn));
   }, [isAdminLoggedIn]);
 
-  // Login da cliente por Telefone + Data de Nascimento
-  const loginClient = (phoneInput: string, birthDateInput: string) => {
-    const cleanInputPhone = phoneInput.replace(/\D/g, '');
-    let normalizedBirth = birthDateInput.trim();
-    if (normalizedBirth.includes('/')) {
-      const parts = normalizedBirth.split('/');
-      if (parts.length === 3) {
-        normalizedBirth = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+  // =========================================================================
+  // SINCRONIZAÇÃO NUVEM SUPABASE + TEMPO REAL + RESGATE DE DADOS LOCAIS DA RAPHA
+  // =========================================================================
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initSupabaseCloud() {
+      // 1. PRIMEIRO: Resgata qualquer agendamento ou cliente criado no iPhone da Rapha e sobe pro Supabase
+      await rescueLocalDataToSupabase();
+
+      // 2. SEGUNDO: Baixa o estado mais recente do Supabase (para todos os celulares sincronizarem)
+      const cloudData = await fetchInitialSupabaseData();
+      if (cloudData && isMounted) {
+        if (cloudData.appointments) {
+          setAppointments(prev => {
+            // Mesclar evitando duplicatas
+            const merged = [...cloudData.appointments!];
+            for (const local of prev) {
+              if (!merged.some(m => m.id === local.id)) {
+                merged.push(local);
+              }
+            }
+            return merged;
+          });
+        }
+
+        if (cloudData.clients && cloudData.clients.length > 0) {
+          setClients(prev => {
+            const merged = [...cloudData.clients!];
+            for (const local of prev) {
+              if (!merged.some(m => m.id === local.id)) {
+                merged.push(local);
+              }
+            }
+            return merged;
+          });
+        }
+
+        if (cloudData.transactions) {
+          setTransactions(cloudData.transactions);
+        }
+
+        if (cloudData.feedbacks) {
+          setFeedbacks(cloudData.feedbacks);
+        }
+
+        if (cloudData.settingsRow) {
+          setScheduleSettings(prev => mapRowToSettings(cloudData.settingsRow, prev));
+        }
       }
     }
 
-    const found = clients.find(c => {
+    initSupabaseCloud();
+
+    // 3. TERCEIRO: Conectar WebSocket Realtime do Supabase
+    if (supabase && isSupabaseConfigured) {
+      const channel = supabase
+        .channel('studio-realtime-sync')
+        // Agendamentos em Tempo Real
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, payload => {
+          if (!isMounted) return;
+          if (payload.eventType === 'INSERT') {
+            const newApp = mapRowToAppointment(payload.new);
+            setAppointments(prev => {
+              if (prev.some(a => a.id === newApp.id)) return prev;
+              return [newApp, ...prev];
+            });
+
+            // Toca o sininho e dispara notificação no celular
+            playNotificationBell();
+            showBrowserNotification(
+              'Studio Raphaely Mengel 🔔',
+              `Novo agendamento de ${newApp.clientName} (${newApp.procedureName}) para ${newApp.date} às ${newApp.time}!`
+            );
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedApp = mapRowToAppointment(payload.new);
+            setAppointments(prev => prev.map(a => a.id === updatedApp.id ? updatedApp : a));
+          } else if (payload.eventType === 'DELETE') {
+            const oldId = (payload.old as any)?.id;
+            if (oldId) {
+              setAppointments(prev => prev.filter(a => a.id !== oldId));
+            }
+          }
+        })
+        // Clientes em Tempo Real
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, payload => {
+          if (!isMounted) return;
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const updatedCli = mapRowToClient(payload.new);
+            setClients(prev => {
+              const exists = prev.some(c => c.id === updatedCli.id);
+              return exists ? prev.map(c => c.id === updatedCli.id ? updatedCli : c) : [updatedCli, ...prev];
+            });
+          }
+        })
+        // Transações em Tempo Real
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, payload => {
+          if (!isMounted) return;
+          if (payload.eventType === 'INSERT') {
+            const newTx = mapRowToTransaction(payload.new);
+            setTransactions(prev => prev.some(t => t.id === newTx.id) ? prev : [newTx, ...prev]);
+          } else if (payload.eventType === 'DELETE') {
+            const oldId = (payload.old as any)?.id;
+            if (oldId) setTransactions(prev => prev.filter(t => t.id !== oldId));
+          }
+        })
+        // Feedbacks em Tempo Real
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'feedbacks' }, payload => {
+          if (!isMounted) return;
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const updatedFb = mapRowToFeedback(payload.new);
+            setFeedbacks(prev => {
+              const exists = prev.some(f => f.id === updatedFb.id);
+              return exists ? prev.map(f => f.id === updatedFb.id ? updatedFb : f) : [updatedFb, ...prev];
+            });
+          }
+        })
+        .subscribe();
+
+      return () => {
+        isMounted = false;
+        supabase?.removeChannel(channel);
+      };
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Notificações Utilitários
+  const triggerBellNotification = () => {
+    playNotificationBell();
+  };
+
+  const enableBrowserNotifications = async () => {
+    return await requestBrowserNotificationPermission();
+  };
+
+  // Login de Cliente
+  const loginClient = (phone: string, birthDate: string): { success: boolean; message?: string } => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    const cleanSearch = cleanPhone.slice(-8);
+
+    const client = clients.find(c => {
       const cPhone = c.phone.replace(/\D/g, '');
-      const phoneMatches = cPhone.endsWith(cleanInputPhone.slice(-8)) || cleanInputPhone.endsWith(cPhone.slice(-8));
-      const birthMatches = c.birthDate === normalizedBirth;
-      return phoneMatches && birthMatches;
+      return cPhone.endsWith(cleanSearch) && c.birthDate === birthDate;
     });
 
-    if (found) {
-      setCurrentClient(found);
+    if (client) {
+      setCurrentClient(client);
       setActiveTab('cliente');
       return { success: true };
     }
 
     return { 
       success: false, 
-      message: 'Telefone ou data de nascimento não encontrados. Verifique seus dados ou agende uma nova sessão.' 
+      message: 'Cadastro não localizado. Verifique se o telefone e a data de nascimento estão corretos.' 
     };
   };
 
-  const loginAsDemoClient = (clientId: string = 'cli-1') => {
+  const loginAsDemoClient = (clientId: string = 'cli-teste-rapha') => {
     const demo = clients.find(c => c.id === clientId) || clients[0];
     if (demo) {
       setCurrentClient(demo);
@@ -258,17 +431,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // 1. Adicionar Cliente (Local + Nuvem Supabase)
   const addClient = (newClientData: Omit<Client, 'id'>): Client => {
     const newClient: Client = {
       ...newClientData,
       id: `cli-${Date.now()}`
     };
     setClients(prev => [newClient, ...prev]);
+
+    if (supabase && isSupabaseConfigured) {
+      supabase.from('clients').insert([mapClientToRow(newClient)]).then(({ error }) => {
+        if (error) console.error('[Supabase Insert Client Error]:', error);
+      });
+    }
+
     return newClient;
   };
 
   const updateClient = (id: string, updates: Partial<Client>) => {
-    setClients(prev => prev.map(c => (c.id === id ? { ...c, ...updates } : c)));
+    setClients(prev => prev.map(c => {
+      if (c.id === id) {
+        const updated = { ...c, ...updates };
+        if (supabase && isSupabaseConfigured) {
+          supabase.from('clients').update(mapClientToRow(updated)).eq('id', id).then();
+        }
+        return updated;
+      }
+      return c;
+    }));
+
     if (currentClient && currentClient.id === id) {
       setCurrentClient(prev => prev ? { ...prev, ...updates } : null);
     }
@@ -278,19 +469,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateClient(clientId, { avatarUrl });
   };
 
+  // 2. Transações Financeiras (Local + Nuvem Supabase)
   const addTransaction = (transactionData: Omit<Transaction, 'id'>): Transaction => {
     const newTx: Transaction = {
       ...transactionData,
       id: `tx-${Date.now()}`
     };
     setTransactions(prev => [newTx, ...prev]);
+
+    if (supabase && isSupabaseConfigured) {
+      supabase.from('transactions').insert([mapTransactionToRow(newTx)]).then();
+    }
+
     return newTx;
   };
 
   const deleteTransaction = (id: string) => {
     setTransactions(prev => prev.filter(tx => tx.id !== id));
+
+    if (supabase && isSupabaseConfigured) {
+      supabase.from('transactions').delete().eq('id', id).then();
+    }
   };
 
+  // 3. Feedbacks (Local + Nuvem Supabase)
   const addFeedback = (feedbackData: Omit<Feedback, 'id' | 'createdAt'>): Feedback => {
     const newFb: Feedback = {
       ...feedbackData,
@@ -298,11 +500,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString()
     };
     setFeedbacks(prev => [newFb, ...prev]);
+
+    if (supabase && isSupabaseConfigured) {
+      supabase.from('feedbacks').insert([mapFeedbackToRow(newFb)]).then();
+    }
+
     return newFb;
   };
 
   const updateFeedbackStatus = (id: string, status: 'publicado' | 'pendente' | 'oculto') => {
-    setFeedbacks(prev => prev.map(f => f.id === id ? { ...f, status } : f));
+    setFeedbacks(prev => prev.map(f => {
+      if (f.id === id) {
+        const updated = { ...f, status };
+        if (supabase && isSupabaseConfigured) {
+          supabase.from('feedbacks').update({ status }).eq('id', id).then();
+        }
+        return updated;
+      }
+      return f;
+    }));
   };
 
   // Motor de Verificação de Disponibilidade de Datas
@@ -311,20 +527,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const dateObj = new Date(y, m - 1, d);
     const dayOfWeek = dateObj.getDay(); // 0 = Domingo, 1 = Segunda, etc.
 
-    // 1. Dia da semana que a Rapha não atende
     if (!scheduleSettings.workingDays.includes(dayOfWeek)) {
       const dayNames = ['Domingos', 'Segundas-feiras', 'Terças-feiras', 'Quartas-feiras', 'Quintas-feiras', 'Sextas-feiras', 'Sábados'];
       return { selectable: false, reason: `Não há atendimento aos ${dayNames[dayOfWeek]}` };
     }
 
-    // 2. Férias / Recesso
     for (const vac of scheduleSettings.vacationPeriods) {
       if (dateStr >= vac.startDate && dateStr <= vac.endDate) {
         return { selectable: false, reason: `Período de recesso/férias: ${vac.label}` };
       }
     }
 
-    // 3. Dia avulso bloqueado
     if (scheduleSettings.blockedDates.includes(dateStr)) {
       return { selectable: false, reason: 'Agenda fechada nesta data' };
     }
@@ -332,13 +545,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { selectable: true };
   };
 
-  // Conversão de horário HH:mm para minutos desde a meia-noite
   const timeStringToMinutes = (timeStr: string): number => {
     const [h, m] = timeStr.split(':').map(Number);
     return (h || 0) * 60 + (m || 0);
   };
 
-  // Motor Inteligente de Cálculo de Horários Livres (Elimina sobreposições com base na duração real)
+  // Motor Inteligente de Horários Livres (Elimina sobreposições com base na duração real)
   const getAvailableSlotsForDate = (dateStr: string, procedureDurationMinutes: number = 90): DayAvailability => {
     const dateCheck = isDateSelectable(dateStr);
     if (!dateCheck.selectable) {
@@ -349,30 +561,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Base de horários padrão
     let candidateSlots = [...scheduleSettings.defaultSlots];
 
-    // Verificar bloqueios de turnos nesta data
-    const blockedShiftToday = scheduleSettings.blockedShifts.find(bs => bs.date === dateStr);
-    if (blockedShiftToday) {
-      if (blockedShiftToday.shift === 'manha') {
-        // Manhã bloqueada: remove horários antes de 12:30
-        candidateSlots = candidateSlots.filter(t => parseInt(t.replace(':', ''), 10) >= 1230);
-      } else if (blockedShiftToday.shift === 'tarde') {
-        // Tarde bloqueada: remove horários após 12:30
-        candidateSlots = candidateSlots.filter(t => parseInt(t.replace(':', ''), 10) < 1230);
+    // Bloqueios de horários avulsos
+    const blockedSlotsForDate = scheduleSettings.blockedSlots.filter(s => s.date === dateStr);
+    if (blockedSlotsForDate.length > 0) {
+      const blockedTimes = blockedSlotsForDate.map(s => s.time);
+      candidateSlots = candidateSlots.filter(s => !blockedTimes.includes(s));
+    }
+
+    // Bloqueio de turno
+    const blockedShiftForDate = scheduleSettings.blockedShifts.find(s => s.date === dateStr);
+    if (blockedShiftForDate) {
+      if (blockedShiftForDate.shift === 'manha') {
+        candidateSlots = candidateSlots.filter(s => timeStringToMinutes(s) >= 720);
+      } else if (blockedShiftForDate.shift === 'tarde') {
+        candidateSlots = candidateSlots.filter(s => timeStringToMinutes(s) < 720);
       }
     }
 
-    // Remover horários individuais bloqueados pela Rapha nesta data
-    const blockedSlotsToday = scheduleSettings.blockedSlots
-      .filter(bs => bs.date === dateStr)
-      .map(bs => bs.time);
-    candidateSlots = candidateSlots.filter(t => !blockedSlotsToday.includes(t));
-
-    // Motor Inteligente de Agendamento:
-    // Analisa todos os agendamentos confirmados e pendentes do dia com suas durações reais.
-    // Ex: Alongamento às 14:00 com duração de 120min ocupa das 14:00 até as 16:00.
+    // Agendamentos ativos da data (confirmados ou pendentes)
     const activeAppointments = appointments
       .filter(a => a.date === dateStr && (a.status === 'confirmado' || a.status === 'pendente'))
       .map(a => {
@@ -387,20 +595,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       });
 
-    // Filtra os horários candidatos garantindo que:
-    // 1) O novo atendimento não comece dentro de um atendimento existente.
-    // 2) A duração do novo procedimento não colida com outro atendimento já agendado.
     candidateSlots = candidateSlots.filter(slot => {
       const slotStart = timeStringToMinutes(slot);
       const slotEnd = slotStart + procedureDurationMinutes;
 
-      // O horário candidato inicia durante um atendimento existente?
       const startsDuringApp = activeAppointments.some(
         app => slotStart >= app.startMin && slotStart < app.endMin
       );
       if (startsDuringApp) return false;
 
-      // O intervalo do novo atendimento colide com algum atendimento existente?
       const overlapsExisting = activeAppointments.some(
         app => slotStart < app.endMin && slotEnd > app.startMin
       );
@@ -423,7 +626,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  // Solicitação de Agendamento Online Direto (Entra como PENDENTE para a Rapha aceitar)
+  // 4. Solicitação de Agendamento Online Direto (Local + Nuvem Supabase)
   const requestOnlineBooking = (bookingData: {
     clientName: string;
     clientPhone: string;
@@ -435,7 +638,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }): { success: boolean; appointment: Appointment } => {
     const selectedProc = procedures.find(p => p.id === bookingData.procedureId) || procedures[0];
 
-    // Verificar se já existe ou cadastra cliente
     let clientMatch = clients.find(c => {
       const cPhone = c.phone.replace(/\D/g, '');
       const inputPhone = bookingData.clientPhone.replace(/\D/g, '');
@@ -452,7 +654,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         source: 'trafego_pago',
         isNewClient: true,
         favoriteProcedures: [selectedProc.name],
-        avatarUrl: '/portfolio/nail-1.jpg',
         totalAppointments: 0,
         totalSpent: 0
       });
@@ -470,15 +671,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       time: bookingData.time,
       durationMinutes: selectedProc.durationMinutes,
       price: selectedProc.price,
-      status: 'pendente', // Aguarda aprovação da Rapha no painel!
+      status: 'pendente',
       notes: bookingData.notes || 'Solicitado online pelo site',
       reminderSent: false,
+      thankYouSent: false,
       createdAt: new Date().toISOString()
     };
 
     setAppointments(prev => [newApp, ...prev]);
 
-    // Logar automaticamente a cliente se não estiver logada
+    // Enviar imediatamente para o Supabase
+    if (supabase && isSupabaseConfigured) {
+      supabase.from('appointments').insert([mapAppointmentToRow(newApp)]).then(({ error }) => {
+        if (error) console.error('[Supabase Insert Appointment Error]:', error);
+      });
+    }
+
     if (!currentClient) {
       setCurrentClient(clientMatch);
     }
@@ -486,53 +694,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, appointment: newApp };
   };
 
+  // 5. Adicionar Agendamento Manual (Local + Nuvem Supabase)
   const addAppointment = (newAppData: Omit<Appointment, 'id'>): Appointment => {
     const newApp: Appointment = {
       ...newAppData,
       id: `app-${Date.now()}`
     };
     setAppointments(prev => [newApp, ...prev]);
+
+    if (supabase && isSupabaseConfigured) {
+      supabase.from('appointments').insert([mapAppointmentToRow(newApp)]).then(({ error }) => {
+        if (error) console.error('[Supabase Manual Appointment Error]:', error);
+      });
+    }
+
     return newApp;
   };
 
-  // Rapha Aprova Agendamento
+  // 6. Rapha Aprova Agendamento (Local + Nuvem Supabase)
   const approveAppointment = (id: string) => {
+    const approvedAt = new Date().toISOString();
     setAppointments(prev => prev.map(a => {
       if (a.id === id) {
-        return {
-          ...a,
-          status: 'confirmado',
-          approvedAt: new Date().toISOString()
-        };
+        return { ...a, status: 'confirmado', approvedAt };
       }
       return a;
     }));
+
+    if (supabase && isSupabaseConfigured) {
+      supabase.from('appointments').update({ status: 'confirmado', approved_at: approvedAt }).eq('id', id).then();
+    }
   };
 
-  // Rapha Recusa Agendamento
+  // 7. Rapha Recusa Agendamento (Local + Nuvem Supabase)
   const rejectAppointment = (id: string, reason?: string) => {
     setAppointments(prev => prev.map(a => {
       if (a.id === id) {
-        return {
-          ...a,
-          status: 'cancelado',
-          notes: reason ? `${a.notes || ''} (Recusado: ${reason})` : a.notes
-        };
+        const notes = reason ? `${a.notes || ''} (Recusado: ${reason})` : a.notes;
+        return { ...a, status: 'cancelado', notes };
       }
       return a;
     }));
+
+    if (supabase && isSupabaseConfigured) {
+      supabase.from('appointments').update({ status: 'cancelado' }).eq('id', id).then();
+    }
   };
 
+  // 8. Atualizar Status (Local + Nuvem Supabase)
   const updateAppointmentStatus = (id: string, status: AppointmentStatus) => {
-    setAppointments(prev => prev.map(a => a.id === id ? { ...a, status } : a));
+    setAppointments(prev => prev.map(a => (a.id === id ? { ...a, status } : a)));
+
+    if (supabase && isSupabaseConfigured) {
+      supabase.from('appointments').update({ status }).eq('id', id).then();
+    }
   };
 
   const markReminderSent = (id: string) => {
-    setAppointments(prev => prev.map(a => a.id === id ? { ...a, reminderSent: true } : a));
+    setAppointments(prev => prev.map(a => (a.id === id ? { ...a, reminderSent: true } : a)));
+
+    if (supabase && isSupabaseConfigured) {
+      supabase.from('appointments').update({ reminder_sent: true }).eq('id', id).then();
+    }
   };
 
-  const markThankYouSent = (id: string) => {
-    setAppointments(prev => prev.map(a => a.id === id ? { ...a, thankYouSent: true } : a));
+  const markThankYouSent = (appointmentId: string) => {
+    setAppointments(prev => prev.map(a => (a.id === appointmentId ? { ...a, thankYouSent: true } : a)));
+
+    if (supabase && isSupabaseConfigured) {
+      supabase.from('appointments').update({ thank_you_sent: true }).eq('id', appointmentId).then();
+    }
   };
 
   const getUpcomingAppointmentForClient = (clientId: string): Appointment | null => {
@@ -548,30 +779,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
   };
 
-  // Funções de Gestão de Agenda da Rapha
+  // 9. Gestão de Horários & Férias (Local + Nuvem Supabase)
+  const saveScheduleSettingsToCloud = (newSettings: ScheduleSettings) => {
+    if (supabase && isSupabaseConfigured) {
+      supabase.from('schedule_settings').upsert([mapSettingsToRow(newSettings)], { onConflict: 'id' }).then();
+    }
+  };
+
   const toggleWorkingDay = (dayIndex: number) => {
     setScheduleSettings(prev => {
       const isWorking = prev.workingDays.includes(dayIndex);
       const nextDays = isWorking 
         ? prev.workingDays.filter(d => d !== dayIndex)
         : [...prev.workingDays, dayIndex].sort();
-      return { ...prev, workingDays: nextDays };
+      const updated = { ...prev, workingDays: nextDays };
+      saveScheduleSettingsToCloud(updated);
+      return updated;
     });
   };
 
   const addVacationPeriod = (vacation: Omit<VacationPeriod, 'id'>) => {
     const newVac: VacationPeriod = { ...vacation, id: `vac-${Date.now()}` };
-    setScheduleSettings(prev => ({
-      ...prev,
-      vacationPeriods: [...prev.vacationPeriods, newVac]
-    }));
+    setScheduleSettings(prev => {
+      const updated = { ...prev, vacationPeriods: [...prev.vacationPeriods, newVac] };
+      saveScheduleSettingsToCloud(updated);
+      return updated;
+    });
   };
 
   const removeVacationPeriod = (id: string) => {
-    setScheduleSettings(prev => ({
-      ...prev,
-      vacationPeriods: prev.vacationPeriods.filter(v => v.id !== id)
-    }));
+    setScheduleSettings(prev => {
+      const updated = { ...prev, vacationPeriods: prev.vacationPeriods.filter(v => v.id !== id) };
+      saveScheduleSettingsToCloud(updated);
+      return updated;
+    });
   };
 
   const toggleBlockedDate = (dateStr: string) => {
@@ -580,48 +821,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const nextDates = isBlocked 
         ? prev.blockedDates.filter(d => d !== dateStr)
         : [...prev.blockedDates, dateStr];
-      return { ...prev, blockedDates: nextDates };
+      const updated = { ...prev, blockedDates: nextDates };
+      saveScheduleSettingsToCloud(updated);
+      return updated;
     });
   };
 
   const addBlockedShift = (shift: Omit<BlockedShift, 'id'>) => {
     const newShift: BlockedShift = { ...shift, id: `shift-${Date.now()}` };
-    setScheduleSettings(prev => ({
-      ...prev,
-      blockedShifts: [...prev.blockedShifts, newShift]
-    }));
+    setScheduleSettings(prev => {
+      const updated = { ...prev, blockedShifts: [...prev.blockedShifts, newShift] };
+      saveScheduleSettingsToCloud(updated);
+      return updated;
+    });
   };
 
   const removeBlockedShift = (id: string) => {
-    setScheduleSettings(prev => ({
-      ...prev,
-      blockedShifts: prev.blockedShifts.filter(s => s.id !== id)
-    }));
+    setScheduleSettings(prev => {
+      const updated = { ...prev, blockedShifts: prev.blockedShifts.filter(s => s.id !== id) };
+      saveScheduleSettingsToCloud(updated);
+      return updated;
+    });
   };
 
   const addBlockedSlot = (slot: Omit<BlockedSlot, 'id'>) => {
     const newSlot: BlockedSlot = { ...slot, id: `slot-${Date.now()}` };
-    setScheduleSettings(prev => ({
-      ...prev,
-      blockedSlots: [...prev.blockedSlots, newSlot]
-    }));
+    setScheduleSettings(prev => {
+      const updated = { ...prev, blockedSlots: [...prev.blockedSlots, newSlot] };
+      saveScheduleSettingsToCloud(updated);
+      return updated;
+    });
   };
 
   const removeBlockedSlot = (id: string) => {
-    setScheduleSettings(prev => ({
-      ...prev,
-      blockedSlots: prev.blockedSlots.filter(s => s.id !== id)
-    }));
+    setScheduleSettings(prev => {
+      const updated = { ...prev, blockedSlots: prev.blockedSlots.filter(s => s.id !== id) };
+      saveScheduleSettingsToCloud(updated);
+      return updated;
+    });
   };
 
   const updateDefaultSlots = (slots: string[]) => {
-    setScheduleSettings(prev => ({ ...prev, defaultSlots: slots }));
+    setScheduleSettings(prev => {
+      const updated = { ...prev, defaultSlots: slots };
+      saveScheduleSettingsToCloud(updated);
+      return updated;
+    });
   };
 
   // Solicitações que necessitam de aprovação da Rapha
   const pendingAppointments = appointments.filter(a => a.status === 'pendente');
 
-  // Alertas de Aniversariantes
+  // Alertas de Aniversariantes Dinâmicos
   const today = new Date();
   const currentMonth = today.getMonth() + 1;
   const currentDay = today.getDate();
@@ -654,7 +905,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     .filter((alert): alert is BirthdayAlert => alert !== null)
     .sort((a, b) => a.daysUntil - b.daysUntil);
 
-  // Alertas de Retenção
+  // Alertas de Retenção Dinâmicos
   const retentionAlerts: RetentionAlert[] = clients
     .map(client => {
       if (!client.lastVisitDate) return null;
@@ -684,13 +935,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const newClients = clients.filter(c => c.isNewClient || c.source === 'trafego_pago');
 
   const resetDataToDefault = () => {
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}_clients`);
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}_appointments`);
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}_procedures`);
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}_schedule_settings`);
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}_transactions`);
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}_feedbacks`);
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}_current_client`);
     setClients(initialClients);
     setAppointments(initialAppointments);
     setProcedures(initialProcedures);
@@ -750,7 +994,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         birthdayAlerts,
         retentionAlerts,
         newClients,
-        resetDataToDefault
+        resetDataToDefault,
+        triggerBellNotification,
+        enableBrowserNotifications
       }}
     >
       {children}

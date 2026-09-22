@@ -38,7 +38,9 @@ export const RaphaDashboard: React.FC = () => {
     birthdayAlerts, 
     setActiveTab, 
     resetDataToDefault,
-    toggleAdminLogin 
+    toggleAdminLogin,
+    triggerBellNotification,
+    enableBrowserNotifications
   } = useApp();
 
   const [activeTab, setActiveTabLocal] = useState<AdminTab>('visao_geral');
@@ -65,7 +67,19 @@ export const RaphaDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-end sm:self-center">
+        <div className="flex items-center gap-2 self-end sm:self-center flex-wrap justify-end">
+          <button
+            onClick={() => {
+              triggerBellNotification();
+              enableBrowserNotifications();
+            }}
+            title="Tocar som de teste e habilitar alertas sonoros"
+            className="px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#8B5A51] hover:text-[#73433a] text-xs font-semibold flex items-center gap-1.5 transition-colors border border-amber-200 shadow-xs"
+          >
+            <BellRing className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+            <span>Sininho 🔔</span>
+          </button>
+
           <button
             onClick={() => {
               toggleAdminLogin(false);
