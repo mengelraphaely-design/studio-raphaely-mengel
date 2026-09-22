@@ -43,6 +43,12 @@ export const AdminAgenda: React.FC = () => {
   const [showNewModal, setShowNewModal] = useState(false);
   const [approvedNotification, setApprovedNotification] = useState<Appointment | null>(null);
 
+  // Modal de Concluir Atendimento & Ajuste de Valor/Financeiro
+  const [concludingApp, setConcludingApp] = useState<Appointment | null>(null);
+  const [concludePrice, setConcludePrice] = useState<string>('');
+  const [concludeDate, setConcludeDate] = useState<string>('');
+  const [concludeNotes, setConcludeNotes] = useState<string>('');
+
   // Formulário de novo agendamento manual
   const [newClientId, setNewClientId] = useState(clients[0]?.id || '');
   const [newProcedureId, setNewProcedureId] = useState(procedures[0]?.id || '');
@@ -381,9 +387,14 @@ export const AdminAgenda: React.FC = () => {
                 {/* Concluir Atendimento */}
                 {app.status === 'confirmado' && (
                   <button
-                    onClick={() => updateAppointmentStatus(app.id, 'concluido')}
-                    className="p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors"
-                    title="Marcar como Concluído"
+                    onClick={() => {
+                      setConcludingApp(app);
+                      setConcludePrice(String(app.price));
+                      setConcludeDate(app.date || todayStr);
+                      setConcludeNotes('');
+                    }}
+                    className="p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors shadow-xs"
+                    title="Marcar como Concluído e Lançar no Financeiro"
                   >
                     <Check className="w-4 h-4" />
                   </button>
@@ -531,6 +542,119 @@ export const AdminAgenda: React.FC = () => {
                   className="flex-1 py-3 rounded-xl bg-[#8B5A51] hover:bg-[#73433a] text-xs font-semibold text-white shadow-xs"
                 >
                   Salvar Horário
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Concluir Atendimento & Lançar Receita */}
+      {concludingApp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl border border-[#EFE4DE] relative space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EFE4DE]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                  <Check className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-lg font-bold text-[#2C201C]">
+                    Concluir Atendimento
+                  </h3>
+                  <p className="text-xs text-[#7E706B]">
+                    Lançar receita direto no caixa e financeiro
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setConcludingApp(null)}
+                className="p-1.5 rounded-full text-[#7E706B] hover:bg-[#FAF6F3]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-[#FAF6F3] p-3.5 rounded-2xl border border-[#EFE4DE] space-y-1">
+              <p className="text-xs font-bold text-[#2C201C]">{concludingApp.clientName}</p>
+              <p className="text-xs text-[#7E706B]">{concludingApp.procedureName} • {concludingApp.time}</p>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const finalPrice = parseFloat(concludePrice) || concludingApp.price;
+                updateAppointmentStatus(
+                  concludingApp.id, 
+                  'concluido', 
+                  finalPrice, 
+                  concludeDate, 
+                  concludeNotes.trim()
+                );
+                setConcludingApp(null);
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                  Valor Cobrado / Recebido (R$)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-[#7E706B]">R$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={concludePrice}
+                    onChange={(e) => setConcludePrice(e.target.value)}
+                    className="w-full pl-10 pr-3.5 py-2.5 text-sm font-bold text-emerald-800 rounded-xl border border-[#EFE4DE] bg-white focus:outline-hidden focus:border-emerald-600"
+                  />
+                </div>
+                <span className="text-[10px] text-[#7E706B] mt-0.5 block">
+                  Padrão do serviço: R$ {concludingApp.price} (ajuste se deu desconto ou adicionais)
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                  Data do Recebimento
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={concludeDate}
+                  onChange={(e) => setConcludeDate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#EFE4DE] focus:outline-hidden focus:border-[#8B5A51]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                  Forma de Pagamento / Observações (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Pix, Dinheiro, Cartão, + Nail art..."
+                  value={concludeNotes}
+                  onChange={(e) => setConcludeNotes(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#EFE4DE] text-xs text-[#2C201C] focus:outline-hidden focus:border-[#8B5A51]"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConcludingApp(null)}
+                  className="flex-1 py-2.5 text-xs font-semibold rounded-xl border border-[#EFE4DE] text-[#7E706B] hover:bg-[#FAF6F3]"
+                >
+                  Voltar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs flex items-center justify-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Confirmar & Lançar no Saldo</span>
                 </button>
               </div>
             </form>

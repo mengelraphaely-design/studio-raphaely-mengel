@@ -46,6 +46,13 @@ import {
   requestBrowserNotificationPermission 
 } from '../utils/notifications';
 
+const getLocalDateStr = (d = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 interface BirthdayAlert {
   client: Client;
   daysUntil: number;
@@ -79,13 +86,16 @@ interface AppContextType {
   isAdminLoggedIn: boolean;
   activeTab: MainTab;
   setActiveTab: (tab: MainTab) => void;
+  setCurrentClient: (client: Client | null) => void;
   loginClient: (phone: string, birthDate: string) => { success: boolean; message?: string };
   loginAsDemoClient: (clientId?: string) => void;
   logoutClient: () => void;
   toggleAdminLogin: (login?: boolean) => void;
+  // Métodos de Clientes
   addClient: (client: Omit<Client, 'id'>) => Client;
   updateClient: (id: string, updates: Partial<Client>) => void;
   updateClientAvatar: (clientId: string, avatarUrl: string) => void;
+  // Métodos de Agendamentos
   requestOnlineBooking: (bookingData: {
     clientName: string;
     clientPhone: string;
@@ -100,7 +110,13 @@ interface AppContextType {
   syncFromCloud: () => Promise<void>;
   isSyncing: boolean;
   addAppointment: (appointment: Omit<Appointment, 'id'>) => Appointment;
-  updateAppointmentStatus: (id: string, status: AppointmentStatus) => void;
+  updateAppointmentStatus: (
+    id: string, 
+    status: AppointmentStatus, 
+    customPrice?: number, 
+    paymentDate?: string, 
+    paymentNotes?: string
+  ) => void;
   markReminderSent: (id: string) => void;
   getUpcomingAppointmentForClient: (clientId: string) => Appointment | null;
   getClientHistory: (clientId: string) => Appointment[];
@@ -109,6 +125,7 @@ interface AppContextType {
   markThankYouSent: (appointmentId: string) => void;
   // Financial Transactions
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Transaction;
+  updateTransaction: (id: string, updates: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
   // Feedbacks
   addFeedback: (feedback: Omit<Feedback, 'id' | 'createdAt'>) => Feedback;
@@ -329,7 +346,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         if (cloudData.transactions) {
-          setTransactions(cloudData.transactions);
+          const cloudTxList = [...cloudData.transactions];
+          const existingTxIds = new Set(cloudTxList.map(t => t.id));
+
+          // Auto-reconciliação de qualquer agendamento já concluído sem transação
+          if (cloudData.appointments) {
+            for (const app of cloudData.appointments) {
+              if (app.status === 'concluido') {
+                const expectedTxId = `tx-app-${app.id}`;
+                const hasTx = existingTxIds.has(expectedTxId) || cloudTxList.some(t => t.id === expectedTxId || (t.type === 'receita' && t.description.includes(app.clientName) && t.date === app.date));
+                if (!hasTx) {
+                  const autoTx: Transaction = {
+                    id: expectedTxId,
+                    type: 'receita',
+                    description: `${app.procedureName} - ${app.clientName}`,
+                    amount: app.price,
+                    category: 'atendimento',
+                    date: app.date || getLocalDateStr()
+                  };
+                  cloudTxList.unshift(autoTx);
+                  existingTxIds.add(expectedTxId);
+                  if (supabase && isSupabaseConfigured) {
+                    supabase.from('transactions').upsert([mapTransactionToRow(autoTx)], { onConflict: 'id' }).then();
+                  }
+                }
+              }
+            }
+          }
+          setTransactions(cloudTxList);
         }
 
         if (cloudData.feedbacks) {
@@ -539,10 +583,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTransactions(prev => [newTx, ...prev]);
 
     if (supabase && isSupabaseConfigured) {
-      supabase.from('transactions').insert([mapTransactionToRow(newTx)]).then();
+      supabase.from('transactions').upsert([mapTransactionToRow(newTx)], { onConflict: 'id' }).then();
     }
 
     return newTx;
+  };
+
+  const updateTransaction = (id: string, updates: Partial<Transaction>) => {
+    let updatedTx: Transaction | undefined;
+    setTransactions(prev => prev.map(tx => {
+      if (tx.id === id) {
+        updatedTx = { ...tx, ...updates };
+        return updatedTx;
+      }
+      return tx;
+    }));
+
+    if (supabase && isSupabaseConfigured && updatedTx) {
+      supabase.from('transactions').update({
+        type: updatedTx.type,
+        description: updatedTx.description,
+        amount: Number(updatedTx.amount) || 0,
+        category: updatedTx.category,
+        date: updatedTx.date
+      }).eq('id', id).then();
+    }
   };
 
   const deleteTransaction = (id: string) => {
@@ -852,11 +917,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 8. Atualizar Status (Local + Nuvem Supabase)
-  const updateAppointmentStatus = (id: string, status: AppointmentStatus) => {
-    setAppointments(prev => prev.map(a => (a.id === id ? { ...a, status } : a)));
+  const updateAppointmentStatus = (
+    id: string, 
+    status: AppointmentStatus, 
+    customPrice?: number, 
+    paymentDate?: string, 
+    paymentNotes?: string
+  ) => {
+    let targetApp: Appointment | undefined;
+    setAppointments(prev => prev.map(a => {
+      if (a.id === id) {
+        targetApp = { 
+          ...a, 
+          status, 
+          price: customPrice !== undefined ? customPrice : a.price,
+          notes: paymentNotes ? (a.notes ? `${a.notes} | ${paymentNotes}` : paymentNotes) : a.notes
+        };
+        return targetApp;
+      }
+      return a;
+    }));
 
     if (supabase && isSupabaseConfigured) {
-      supabase.from('appointments').update({ status }).eq('id', id).then();
+      const updatePayload: any = { status };
+      if (customPrice !== undefined) updatePayload.price = customPrice;
+      if (paymentNotes) updatePayload.notes = paymentNotes;
+      supabase.from('appointments').update(updatePayload).eq('id', id).then();
+    }
+
+    if (status === 'concluido') {
+      const app = targetApp || appointments.find(a => a.id === id);
+      if (app) {
+        const finalPrice = customPrice !== undefined ? customPrice : app.price;
+        const finalDate = paymentDate || app.date || getLocalDateStr();
+        const txId = `tx-app-${id}`;
+        const txDesc = `${app.procedureName} - ${app.clientName}${paymentNotes ? ` (${paymentNotes})` : ''}`;
+
+        const newTx: Transaction = {
+          id: txId,
+          type: 'receita',
+          description: txDesc,
+          amount: finalPrice,
+          category: 'atendimento',
+          date: finalDate
+        };
+
+        setTransactions(prev => {
+          const filtered = prev.filter(t => t.id !== txId);
+          return [newTx, ...filtered];
+        });
+
+        if (supabase && isSupabaseConfigured) {
+          supabase.from('transactions').upsert([mapTransactionToRow(newTx)], { onConflict: 'id' }).then();
+        }
+
+        // Atualizar estatísticas da cliente (totalAppointments e totalSpent)
+        if (app.clientId) {
+          setClients(prev => prev.map(c => {
+            if (c.id === app.clientId) {
+              const updated = {
+                ...c,
+                totalAppointments: (c.totalAppointments || 0) + 1,
+                totalSpent: (c.totalSpent || 0) + finalPrice,
+                lastVisitDate: finalDate
+              };
+              if (supabase && isSupabaseConfigured) {
+                supabase.from('clients').update({
+                  total_appointments: updated.totalAppointments,
+                  total_spent: updated.totalSpent,
+                  last_visit_date: updated.lastVisitDate
+                }).eq('id', c.id).then();
+              }
+              return updated;
+            }
+            return c;
+          }));
+        }
+      }
+    } else if (status === 'cancelado') {
+      const txId = `tx-app-${id}`;
+      setTransactions(prev => prev.filter(t => t.id !== txId));
+      if (supabase && isSupabaseConfigured) {
+        supabase.from('transactions').delete().eq('id', txId).then();
+      }
     }
   };
 
@@ -1066,6 +1209,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         transactions,
         feedbacks,
         currentClient,
+        setCurrentClient,
         isAdminLoggedIn,
         activeTab,
         setActiveTab,
@@ -1088,6 +1232,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getAvailableSlotsForDate,
         isDateSelectable,
         addTransaction,
+        updateTransaction,
         deleteTransaction,
         addFeedback,
         updateFeedbackStatus,

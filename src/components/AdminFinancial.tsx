@@ -14,44 +14,54 @@ import {
   ArrowUpRight, 
   ArrowDownRight,
   Filter,
-  Receipt
+  Receipt,
+  Edit3,
+  RefreshCw
 } from 'lucide-react';
 
+const getLocalDateStr = (d = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export const AdminFinancial: React.FC = () => {
-  const { transactions, addTransaction, deleteTransaction } = useApp();
+  const { 
+    transactions, 
+    addTransaction, 
+    updateTransaction, 
+    deleteTransaction, 
+    syncFromCloud, 
+    isSyncing 
+  } = useApp();
 
   const [dateFilter, setDateFilter] = useState<'hoje' | '7dias' | 'mes' | 'todos'>('mes');
   const [typeFilter, setTypeFilter] = useState<'todos' | 'receita' | 'despesa'>('todos');
   
-  // Modal de Nova Transação
+  // Modal de Transação (Novo / Editar Ajuste)
   const [showModal, setShowModal] = useState(false);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [newType, setNewType] = useState<'receita' | 'despesa'>('receita');
   const [newDescription, setNewDescription] = useState('');
   const [newAmount, setNewAmount] = useState('');
   const [newCategory, setNewCategory] = useState<TransactionCategory>('atendimento');
-  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newDate, setNewDate] = useState(getLocalDateStr());
 
-  // Filtrar transações por período
+  const todayStr = getLocalDateStr();
+  const currentMonthPrefix = todayStr.slice(0, 7); // e.g. "2026-09"
+  const d7 = new Date();
+  d7.setDate(d7.getDate() - 7);
+  const sevenDaysAgoStr = getLocalDateStr(d7);
+
+  // Filtrar transações por período de forma segura sem bugs de fuso horário
   const filteredTransactions = transactions.filter((tx) => {
-    const txDate = new Date(tx.date);
-    const today = new Date();
-    
     if (dateFilter === 'hoje') {
-      const todayStr = today.toISOString().split('T')[0];
       if (tx.date !== todayStr) return false;
     } else if (dateFilter === '7dias') {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(today.getDate() - 7);
-      if (txDate < sevenDaysAgo) return false;
+      if (tx.date < sevenDaysAgoStr) return false;
     } else if (dateFilter === 'mes') {
-      // Filtrar pelo mês atual
-      const currentMonth = today.getMonth();
-      const currentYear = today.getFullYear();
-      if (txDate.getMonth() !== currentMonth || txDate.getFullYear() !== currentYear) {
-        // Mantém dados de demonstração do mês de setembro
-        const isSep2026 = tx.date.startsWith('2026-09');
-        if (!isSep2026) return false;
-      }
+      if (!tx.date.startsWith(currentMonthPrefix)) return false;
     }
 
     if (typeFilter !== 'todos' && tx.type !== typeFilter) {
@@ -104,20 +114,53 @@ export const AdminFinancial: React.FC = () => {
     atendimento: { label: 'Atendimentos', color: 'bg-emerald-500' }
   };
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleStartEdit = (tx: Transaction) => {
+    setEditingTx(tx);
+    setNewType(tx.type);
+    setNewDescription(tx.description);
+    setNewAmount(String(tx.amount));
+    setNewCategory(tx.category);
+    setNewDate(tx.date);
+    setShowModal(true);
+  };
+
+  const handleOpenNew = () => {
+    setEditingTx(null);
+    setNewType('receita');
+    setNewDescription('');
+    setNewAmount('');
+    setNewCategory('atendimento');
+    setNewDate(getLocalDateStr());
+    setShowModal(true);
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDescription.trim() || !newAmount || isNaN(Number(newAmount))) return;
 
-    addTransaction({
-      type: newType,
-      description: newDescription.trim(),
-      amount: parseFloat(newAmount),
-      category: newCategory,
-      date: newDate
-    });
+    const parsedAmount = Math.abs(parseFloat(newAmount));
+
+    if (editingTx) {
+      updateTransaction(editingTx.id, {
+        type: newType,
+        description: newDescription.trim(),
+        amount: parsedAmount,
+        category: newCategory,
+        date: newDate
+      });
+    } else {
+      addTransaction({
+        type: newType,
+        description: newDescription.trim(),
+        amount: parsedAmount,
+        category: newCategory,
+        date: newDate
+      });
+    }
 
     // Resetar
     setShowModal(false);
+    setEditingTx(null);
     setNewDescription('');
     setNewAmount('');
     setNewCategory(newType === 'receita' ? 'atendimento' : 'materiais');
@@ -174,9 +217,20 @@ export const AdminFinancial: React.FC = () => {
             </button>
           </div>
 
+          {/* Botão Sincronizar Nuvem */}
+          <button
+            onClick={() => syncFromCloud()}
+            disabled={isSyncing}
+            title="Atualizar dados financeiros com a nuvem"
+            className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-[#8B5A51] text-xs font-bold rounded-xl border border-amber-200 shadow-xs transition-colors flex items-center gap-1.5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-amber-700 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Atualizando...' : 'Atualizar 🔄'}</span>
+          </button>
+
           {/* Botão Nova Transação */}
           <button
-            onClick={() => setShowModal(true)}
+            onClick={handleOpenNew}
             className="px-4 py-2 bg-[#8B5A51] hover:bg-[#73433a] text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
           >
             <Plus className="w-4 h-4" />
@@ -366,12 +420,19 @@ export const AdminFinancial: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 flex-shrink-0">
+                <div className="flex items-center gap-1.5 flex-shrink-0">
                   <span className={`font-serif text-sm sm:text-base font-bold ${
                     tx.type === 'receita' ? 'text-emerald-700' : 'text-rose-600'
                   }`}>
                     {tx.type === 'receita' ? `+R$ ${tx.amount.toLocaleString('pt-BR')}` : `-R$ ${tx.amount.toLocaleString('pt-BR')}`}
                   </span>
+                  <button
+                    onClick={() => handleStartEdit(tx)}
+                    title="Ajustar / Editar lançamento"
+                    className="p-1.5 text-neutral-400 hover:text-[#8B5A51] hover:bg-[#FAF6F3] rounded-lg transition-colors"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => deleteTransaction(tx.id)}
                     title="Excluir lançamento"
@@ -390,23 +451,31 @@ export const AdminFinancial: React.FC = () => {
         )}
       </div>
 
-      {/* MODAL: Novo Lançamento */}
+      {/* MODAL: Novo Lançamento / Ajuste */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-[#EFE4DE]">
-              <h3 className="font-serif text-lg font-bold text-[#2C201C]">
-                Novo Lançamento Financeiro
-              </h3>
+              <div>
+                <h3 className="font-serif text-lg font-bold text-[#2C201C]">
+                  {editingTx ? 'Ajustar Lançamento Financeiro' : 'Novo Lançamento Financeiro'}
+                </h3>
+                <p className="text-xs text-[#7E706B]">
+                  {editingTx ? 'Modifique o valor ou detalhes deste registro' : 'Adicione uma receita ou despesa manual ao caixa'}
+                </p>
+              </div>
               <button 
-                onClick={() => setShowModal(false)}
-                className="p-1 rounded-full text-[#7E706B] hover:bg-[#FAF6F3]"
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingTx(null);
+                }}
+                className="p-1.5 rounded-full text-[#7E706B] hover:bg-[#FAF6F3]"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleAddSubmit} className="space-y-4">
+            <form onSubmit={handleFormSubmit} className="space-y-4">
               
               {/* Tipo: Receita ou Despesa */}
               <div className="grid grid-cols-2 gap-2">
@@ -517,7 +586,10 @@ export const AdminFinancial: React.FC = () => {
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false);
+                    setEditingTx(null);
+                  }}
                   className="flex-1 py-2.5 text-xs font-semibold rounded-xl border border-[#EFE4DE] text-[#7E706B] hover:bg-[#FAF6F3]"
                 >
                   Cancelar
@@ -526,7 +598,7 @@ export const AdminFinancial: React.FC = () => {
                   type="submit"
                   className="flex-1 py-2.5 text-xs font-semibold rounded-xl bg-[#8B5A51] hover:bg-[#73433a] text-white shadow-xs"
                 >
-                  Registrar Lançamento
+                  {editingTx ? 'Salvar Ajuste Financeiro' : 'Registrar Lançamento'}
                 </button>
               </div>
 
