@@ -148,6 +148,23 @@ export const mapRowToSettings = (row: any, fallback: ScheduleSettings): Schedule
 // SALVAGUARDA DE RESGATE: Mapeia e envia QUALQUER dado local para o Supabase
 // (Garante que se a Rapha já salvou no celular dela, sobe pro Supabase na hora)
 // =========================================================================
+// IDs de clientes testes fictícios antigos que devem ser eliminados
+export const MOCK_CLIENT_IDS = new Set([
+  'cli-camila',
+  'cli-aline',
+  'cli-sabrina',
+  'cli-mariana-alves',
+  'cli-juliana-prado',
+  'cli-bruna-tavares',
+  'cli-lua-mendonca',
+  'cli-renan-alves',
+  'cli-larissa',
+  'cli-rafaela-dias',
+  'cli-beatriz',
+  'cli-isabela',
+  'cli-priscila'
+]);
+
 export async function rescueLocalDataToSupabase(): Promise<void> {
   if (!supabase || !isSupabaseConfigured || typeof window === 'undefined') return;
 
@@ -182,7 +199,8 @@ export async function rescueLocalDataToSupabase(): Promise<void> {
           } else if (key.includes('clients')) {
             for (const cli of parsed) {
               if (cli && cli.id && cli.name && !localClients.some(c => c.id === cli.id)) {
-                if (cli.id !== 'cli-camila' && cli.id !== 'cli-aline' && cli.id !== 'cli-sabrina') {
+                // NUNCA resgatar clientes testes fictícios antigos
+                if (!MOCK_CLIENT_IDS.has(cli.id)) {
                   localClients.push(cli);
                 }
               }
@@ -209,6 +227,9 @@ export async function rescueLocalDataToSupabase(): Promise<void> {
         // ignora chaves que não sejam json
       }
     }
+
+    // Limpeza de segurança: garantir que nenhum cliente de mock permaneça no Supabase
+    await supabase.from('clients').delete().in('id', Array.from(MOCK_CLIENT_IDS));
 
     // Se encontrou dados locais (ex: os atendimentos manuais que a Rapha acabou de salvar no iPhone dela):
     if (localClients.length > 0) {
@@ -254,7 +275,11 @@ export async function fetchInitialSupabaseData() {
 
     return {
       appointments: appRes.data ? appRes.data.map(mapRowToAppointment) : null,
-      clients: cliRes.data ? cliRes.data.map(mapRowToClient) : null,
+      clients: cliRes.data
+        ? cliRes.data
+            .map(mapRowToClient)
+            .filter(c => !MOCK_CLIENT_IDS.has(c.id))
+        : null,
       transactions: txRes.data ? txRes.data.map(mapRowToTransaction) : null,
       feedbacks: fbRes.data ? fbRes.data.map(mapRowToFeedback) : null,
       settingsRow: stRes.data || null

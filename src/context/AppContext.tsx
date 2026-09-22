@@ -28,6 +28,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { 
   rescueLocalDataToSupabase, 
   fetchInitialSupabaseData,
+  MOCK_CLIENT_IDS,
   mapAppointmentToRow,
   mapRowToAppointment,
   mapClientToRow,
@@ -139,7 +140,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [clients, setClients] = useState<Client[]>(() => {
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_clients`);
-      return saved ? JSON.parse(saved) : initialClients;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(c => !MOCK_CLIENT_IDS.has(c.id));
+        }
+      }
+      return initialClients;
     } catch {
       return initialClients;
     }
@@ -273,15 +280,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
-        if (cloudData.clients && cloudData.clients.length > 0) {
-          setClients(prev => {
-            const merged = [...cloudData.clients!];
-            for (const local of prev) {
-              if (!merged.some(m => m.id === local.id)) {
-                merged.push(local);
+        // Limpeza de cache local antigo
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.includes('clients')) {
+              const val = localStorage.getItem(key);
+              if (val) {
+                const arr = JSON.parse(val);
+                if (Array.isArray(arr)) {
+                  const cleaned = arr.filter((c: any) => !MOCK_CLIENT_IDS.has(c.id));
+                  localStorage.setItem(key, JSON.stringify(cleaned));
+                }
               }
             }
-            return merged;
+          }
+        } catch {}
+
+        if (cloudData.clients) {
+          setClients(prev => {
+            const filteredCloud = cloudData.clients!.filter(c => !MOCK_CLIENT_IDS.has(c.id));
+            const cloudIds = new Set(filteredCloud.map(c => c.id));
+            const localOnly = prev.filter(c => !cloudIds.has(c.id) && !MOCK_CLIENT_IDS.has(c.id));
+            return [...filteredCloud, ...localOnly];
           });
         }
 
@@ -336,10 +357,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (!isMounted) return;
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const updatedCli = mapRowToClient(payload.new);
-            setClients(prev => {
-              const exists = prev.some(c => c.id === updatedCli.id);
-              return exists ? prev.map(c => c.id === updatedCli.id ? updatedCli : c) : [updatedCli, ...prev];
-            });
+            if (!MOCK_CLIENT_IDS.has(updatedCli.id)) {
+              setClients(prev => {
+                const exists = prev.some(c => c.id === updatedCli.id);
+                return exists ? prev.map(c => c.id === updatedCli.id ? updatedCli : c) : [updatedCli, ...prev];
+              });
+            }
+          } else if (payload.eventType === 'DELETE') {
+            const oldId = (payload.old as any)?.id;
+            if (oldId) {
+              setClients(prev => prev.filter(c => c.id !== oldId));
+            }
           }
         })
         // Transações em Tempo Real
