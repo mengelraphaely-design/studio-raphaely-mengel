@@ -111,7 +111,20 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const STORAGE_KEY_PREFIX = 'rapha_prod_clean_v1';
+  const STORAGE_KEY_PREFIX = 'rapha_v7_clean_zero';
+
+  // Limpeza automática de caches antigos da demonstração
+  if (typeof window !== 'undefined') {
+    try {
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('rapha_') && !key.startsWith(STORAGE_KEY_PREFIX)) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch {
+      // noop
+    }
+  }
 
   const [clients, setClients] = useState<Client[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_clients`);
