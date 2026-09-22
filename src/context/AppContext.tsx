@@ -111,7 +111,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const STORAGE_KEY_PREFIX = 'rapha_v4';
+  const STORAGE_KEY_PREFIX = 'rapha_prod_clean_v1';
 
   const [clients, setClients] = useState<Client[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}_clients`);

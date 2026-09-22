@@ -4,7 +4,7 @@ import { MapPin, Clock, Phone, Sparkles } from 'lucide-react';
 import { STUDIO_PHONE, openWhatsApp } from '../utils/whatsapp';
 
 export const LocationHours: React.FC = () => {
-  const { toggleAdminLogin } = useApp();
+  const { setActiveTab } = useApp();
 
   return (
     <section className="py-12 sm:py-16 bg-[#FAF6F3] border-t border-[#EFE4DE]">
@@ -102,7 +102,7 @@ export const LocationHours: React.FC = () => {
             <span>Design de unhas & estética avançada</span>
             <span>•</span>
             <button 
-              onClick={() => toggleAdminLogin(true)}
+              onClick={() => setActiveTab('rapha')}
               className="text-[#7E706B]/60 hover:text-[#8B5A51] transition-colors"
             >
               Acesso Studio

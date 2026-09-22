@@ -376,7 +376,7 @@ export const AdminAgenda: React.FC = () => {
                   <button
                     onClick={() => {
                       const firstName = app.clientName.split(' ')[0];
-                      const msg = `Oi, ${firstName}! ✨ Passando para agradecer de coração pelo carinho da sua visita hoje no Studio Raphaely Mengel! Amei fazer seu(sua) ${app.procedureName}. Como estão suas unhas? Espero que tenha amado! 💕\n\nSe você puder tirar 30 segundinhos para deixar uma rápida avaliação no nosso site, me ajuda demais:\n👉 https://esteticaraphaelymengel.com.br\n\nQualquer dúvida, estou à disposição!`;
+                      const msg = `Oi, ${firstName}! ✨ Passando para agradecer de coração pelo carinho da sua visita hoje no Studio Raphaely Mengel! Amei fazer seu(sua) ${app.procedureName}. Como estão suas unhas? Espero que tenha amado! 💕\n\nSe você puder tirar 30 segundinhos para deixar uma rápida avaliação no nosso site, me ajuda demais:\n👉 https://studioraphaelymengel.site\n\nQualquer dúvida, estou à disposição!`;
                       openWhatsApp(app.clientPhone, msg);
                       markThankYouSent(app.id);
                     }}

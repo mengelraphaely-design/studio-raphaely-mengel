@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../context/AppContext';
-import { Sparkles, User, Lock, PhoneCall, Image as ImageIcon } from 'lucide-react';
+import { Sparkles, User, PhoneCall, Image as ImageIcon } from 'lucide-react';
 import { STUDIO_PHONE, openWhatsApp } from '../utils/whatsapp';
 
 interface NavbarProps {
@@ -8,29 +8,10 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenLogin }) => {
-  const { currentClient, isAdminLoggedIn, toggleAdminLogin, activeTab, setActiveTab } = useApp();
-  const [showAdminPinModal, setShowAdminPinModal] = useState(false);
-  const [adminPin, setAdminPin] = useState('');
-  const [pinError, setPinError] = useState(false);
+  const { currentClient, isAdminLoggedIn, activeTab, setActiveTab } = useApp();
 
   const handleAdminClick = () => {
-    if (isAdminLoggedIn) {
-      setActiveTab('rapha');
-    } else {
-      setShowAdminPinModal(true);
-      setPinError(false);
-      setAdminPin('');
-    }
-  };
-
-  const handleVerifyPin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPin === '1234' || adminPin === 'rapha' || adminPin === '') {
-      toggleAdminLogin(true);
-      setShowAdminPinModal(false);
-    } else {
-      setPinError(true);
-    }
+    setActiveTab('rapha');
   };
 
   return (
@@ -143,63 +124,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenLogin }) => {
           </div>
         </div>
       </header>
-
-      {/* Modal de PIN para Painel da Rapha */}
-      {showAdminPinModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-[#EFE4DE] animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-12 h-12 rounded-2xl bg-[#F4EAE6] text-[#8B5A51] flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-6 h-6" />
-            </div>
-
-            <h3 className="font-serif text-2xl font-bold text-center text-[#2C201C]">Painel da Rapha</h3>
-            <p className="text-xs text-center text-[#7E706B] mt-1 mb-6">
-              Área de controle de agenda, aniversariantes e retenção de clientes.
-            </p>
-
-            <form onSubmit={handleVerifyPin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[#7E706B] mb-1.5">
-                  Código de Acesso
-                </label>
-                <input
-                  type="password"
-                  value={adminPin}
-                  onChange={(e) => setAdminPin(e.target.value)}
-                  placeholder="Digite 1234 ou deixe em branco"
-                  className="w-full px-4 py-3 rounded-xl border border-[#EFE4DE] focus:outline-none focus:ring-2 focus:ring-[#8B5A51] text-center tracking-widest text-lg"
-                  autoFocus
-                />
-                {pinError && (
-                  <p className="text-xs text-rose-600 mt-1 text-center font-medium">
-                    Código incorreto. Dica: use 1234 para testar.
-                  </p>
-                )}
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAdminPinModal(false)}
-                  className="flex-1 py-3 text-sm font-medium text-[#7E706B] bg-[#FAF6F3] hover:bg-[#EFE4DE] rounded-xl transition-colors"
-                >
-                  Voltar
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-3 text-sm font-semibold text-white bg-[#8B5A51] hover:bg-[#784c44] rounded-xl shadow-md transition-colors"
-                >
-                  Entrar no Painel
-                </button>
-              </div>
-
-              <p className="text-[11px] text-center text-[#7E706B]/80 pt-2">
-                * Modo protótipo: basta clicar em Entrar ou usar 1234
-              </p>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 };

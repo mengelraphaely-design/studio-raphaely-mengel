@@ -7,7 +7,7 @@ interface ClientLoginModalProps {
 }
 
 export const ClientLoginModal: React.FC<ClientLoginModalProps> = ({ onClose }) => {
-  const { loginClient, loginAsDemoClient } = useApp();
+  const { loginClient } = useApp();
   const [phone, setPhone] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -40,13 +40,8 @@ export const ClientLoginModal: React.FC<ClientLoginModalProps> = ({ onClose }) =
     if (result.success) {
       onClose();
     } else {
-      setErrorMessage(result.message || 'Dados não localizados. Tente o botão de demonstração.');
+      setErrorMessage(result.message || 'Dados não localizados. Verifique o WhatsApp e a data de nascimento informados.');
     }
-  };
-
-  const handleDemoClick = (clientId: string = 'cli-1') => {
-    loginAsDemoClient(clientId);
-    onClose();
   };
 
   return (
@@ -134,32 +129,10 @@ export const ClientLoginModal: React.FC<ClientLoginModalProps> = ({ onClose }) =
           </button>
         </form>
 
-        {/* Separador de Demonstração / 1-Click Test */}
-        <div className="mt-6 pt-5 border-t border-[#EFE4DE]">
-          <p className="text-[11px] font-semibold text-center text-[#8B5A51] uppercase tracking-wider mb-2.5">
-            Testar Agora (1 Clique)
+        <div className="mt-5 pt-4 border-t border-[#EFE4DE] text-center">
+          <p className="text-[11px] text-[#7E706B]">
+            Ainda não é cadastrada? Solicite seu primeiro horário pelo site e seu acesso será criado na hora!
           </p>
-
-          <button
-            type="button"
-            onClick={() => handleDemoClick('cli-1')}
-            className="w-full p-3 rounded-2xl bg-[#FAF6F3] hover:bg-[#F4EAE6] border border-[#E8D1CB] text-left transition-colors flex items-center justify-between group"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-[#8B5A51] text-white flex items-center justify-center font-serif text-sm font-bold">
-                C
-              </div>
-              <div>
-                <p className="text-xs font-bold text-[#2C201C] group-hover:text-[#8B5A51]">
-                  Entrar como Camila Rocha
-                </p>
-                <p className="text-[10px] text-[#7E706B]">
-                  (79) 99876-5432 • Nasc: 24/09/1995 • Sessão amanhã!
-                </p>
-              </div>
-            </div>
-            <CheckCircle2 className="w-4 h-4 text-[#8B5A51] opacity-60 group-hover:opacity-100" />
-          </button>
         </div>
 
       </div>

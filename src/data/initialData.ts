@@ -217,8 +217,23 @@ export const initialRealPortfolio: PortfolioItem[] = [
   }
 ];
 
-// Base com as 13 clientes do Lovable
+// Base com clientes do Studio
 export const initialClients: Client[] = [
+  {
+    id: 'cli-teste-rapha',
+    name: 'Cliente Teste (Rapha)',
+    phone: '(79) 99999-9999',
+    birthDate: '2000-01-01',
+    firstVisitDate: '2026-09-22',
+    lastVisitDate: '2026-09-22',
+    source: 'instagram',
+    isNewClient: true,
+    favoriteProcedures: ['Alongamento de Unhas'],
+    skinNotes: 'Perfil exclusivo de teste para Raphaely experimentar a área da cliente e simular agendamentos.',
+    totalAppointments: 0,
+    totalSpent: 0,
+    avatarUrl: '/portfolio/nail-1.jpg'
+  },
   {
     id: 'cli-camila',
     name: 'Camila Rocha',
@@ -416,74 +431,8 @@ export const initialClients: Client[] = [
   }
 ];
 
-export const initialAppointments: Appointment[] = [
-  {
-    id: 'app-1',
-    clientId: 'cli-rafaela-dias',
-    clientName: 'Rafaela Dias',
-    clientPhone: '(79) 99555-4433',
-    procedureId: 'proc-manutencao',
-    procedureName: 'Manutenção de Alongamento',
-    date: '2026-09-22', // Amanhã!
-    time: '14:00',
-    durationMinutes: 90,
-    price: 70,
-    status: 'confirmado',
-    notes: 'Rafaela Dias · Manutenção de Alongamento (22/09 às 14:00)',
-    reminderSent: true,
-    createdAt: '2026-09-20T14:30:00.000Z',
-    approvedAt: '2026-09-20T15:00:00.000Z'
-  },
-  {
-    id: 'app-2',
-    clientId: 'cli-larissa',
-    clientName: 'Larissa Albuquerque',
-    clientPhone: '(79) 99789-0123',
-    procedureId: 'proc-alongamento',
-    procedureName: 'Alongamento de Unhas Completo',
-    date: '2026-09-23',
-    time: '14:00',
-    durationMinutes: 120,
-    price: 130,
-    status: 'pendente', // Aguarda aprovação da Rapha
-    notes: 'Solicitado pelo site. Nova cliente!',
-    reminderSent: false,
-    createdAt: '2026-09-21T20:15:00.000Z'
-  },
-  {
-    id: 'app-3',
-    clientId: 'cli-beatriz',
-    clientName: 'Beatriz Vasconcelos',
-    clientPhone: '(79) 99654-3210',
-    procedureId: 'proc-banho-gel',
-    procedureName: 'Banho de Gel + Esmaltação',
-    date: '2026-09-24',
-    time: '11:00',
-    durationMinutes: 90,
-    price: 80,
-    status: 'pendente', // Aguarda aprovação da Rapha
-    notes: 'Cliente quer unhas para viagem.',
-    reminderSent: false,
-    createdAt: '2026-09-21T21:10:00.000Z'
-  },
-  {
-    id: 'app-4',
-    clientId: 'cli-camila',
-    clientName: 'Camila Rocha',
-    clientPhone: '(79) 99876-5432',
-    procedureId: 'proc-manutencao',
-    procedureName: 'Manutenção de Alongamento',
-    date: '2026-09-15', // Já concluído para teste de feedback!
-    time: '14:00',
-    durationMinutes: 90,
-    price: 70,
-    status: 'concluido',
-    notes: 'Atendimento finalizado com sucesso.',
-    reminderSent: true,
-    createdAt: '2026-09-10T10:00:00.000Z',
-    hasFeedback: false
-  }
-];
+// Agenda começa em branco para uso real
+export const initialAppointments: Appointment[] = [];
 
 // Transações Financeiras (Faturamento R$ 1.250 | Despesas R$ 2.360 | Resultado -R$ 1.110)
 export const initialTransactions: Transaction[] = [

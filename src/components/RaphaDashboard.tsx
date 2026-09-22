@@ -10,7 +10,8 @@ import {
   Palmtree, 
   ArrowLeft, 
   RotateCcw,
-  BellRing
+  BellRing,
+  Lock
 } from 'lucide-react';
 import { AdminOverview } from './AdminOverview';
 import { AdminAgenda } from './AdminAgenda';
@@ -36,7 +37,8 @@ export const RaphaDashboard: React.FC = () => {
     pendingAppointments, 
     birthdayAlerts, 
     setActiveTab, 
-    resetDataToDefault 
+    resetDataToDefault,
+    toggleAdminLogin 
   } = useApp();
 
   const [activeTab, setActiveTabLocal] = useState<AdminTab>('visao_geral');
@@ -66,15 +68,14 @@ export const RaphaDashboard: React.FC = () => {
         <div className="flex items-center gap-2 self-end sm:self-center">
           <button
             onClick={() => {
-              if (confirm('Deseja restaurar todos os dados para a demonstração inicial (13 clientes, finanças e feedbacks)?')) {
-                resetDataToDefault();
-              }
+              toggleAdminLogin(false);
+              setActiveTab('portfolio');
             }}
-            title="Restaurar dados iniciais"
-            className="px-3 py-2 rounded-xl bg-[#FAF6F3] hover:bg-[#F4EAE6] text-[#7E706B] hover:text-[#2C201C] text-xs font-semibold flex items-center gap-1.5 transition-colors border border-[#EFE4DE]"
+            title="Bloquear e sair do painel"
+            className="px-3 py-2 rounded-xl bg-[#FAF6F3] hover:bg-rose-50 text-[#7E706B] hover:text-rose-700 text-xs font-semibold flex items-center gap-1.5 transition-colors border border-[#EFE4DE]"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Restaurar Dados</span>
+            <Lock className="w-3.5 h-3.5" />
+            <span>Sair / Bloquear</span>
           </button>
 
           <button
@@ -82,7 +83,7 @@ export const RaphaDashboard: React.FC = () => {
             className="px-4 py-2 rounded-xl bg-[#8B5A51] hover:bg-[#73433a] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Voltar ao Site Público</span>
+            <span>Voltar ao Site</span>
           </button>
         </div>
       </div>

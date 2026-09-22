@@ -12,12 +12,13 @@ import { BookingModal } from './components/BookingModal';
 import { ClientLoginModal } from './components/ClientLoginModal';
 import { ClientDashboard } from './components/ClientDashboard';
 import { RaphaDashboard } from './components/RaphaDashboard';
+import { AdminAuthScreen } from './components/AdminAuthScreen';
 import { Procedure } from './types';
 import { PhoneCall, Sparkles, User } from 'lucide-react';
 import { STUDIO_PHONE, openWhatsApp } from './utils/whatsapp';
 
 export function App() {
-  const { activeTab, setActiveTab, currentClient, loginAsDemoClient } = useApp();
+  const { activeTab, setActiveTab, currentClient, isAdminLoggedIn, toggleAdminLogin } = useApp();
   
   // Modals
   const [isBookingOpen, setIsBookingOpen] = useState(false);
@@ -95,14 +96,6 @@ export function App() {
                   >
                     Fazer Login Sem Senha
                   </button>
-
-                  <button
-                    onClick={() => loginAsDemoClient('cli-1')}
-                    className="w-full py-3 px-6 rounded-2xl bg-white hover:bg-[#FAF6F3] text-[#8B5A51] border border-[#E8D1CB] font-semibold text-xs transition-colors shadow-xs flex items-center justify-center gap-2"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    <span>Entrar como Cliente Demo (Camila Rocha)</span>
-                  </button>
                 </div>
               </div>
             )}
@@ -110,7 +103,14 @@ export function App() {
         )}
 
         {activeTab === 'rapha' && (
-          <RaphaDashboard />
+          isAdminLoggedIn ? (
+            <RaphaDashboard />
+          ) : (
+            <AdminAuthScreen 
+              onSuccess={() => toggleAdminLogin(true)} 
+              onCancel={() => setActiveTab('portfolio')} 
+            />
+          )
         )}
       </main>
 

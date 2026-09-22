@@ -34,7 +34,7 @@ export const AdminPostCareMessages: React.FC = () => {
 
   const handleSendThankYou = (app: Appointment) => {
     const firstName = app.clientName.split(' ')[0];
-    const message = `Oi, ${firstName}! ✨ Passando para agradecer de coração pelo carinho da sua visita hoje no Studio Raphaely Mengel! Amei fazer seu(sua) ${app.procedureName}. Como estão suas unhas? Espero que esteja se sentindo maravilhosa! 💕\n\nSe você puder tirar 30 segundinhos para deixar uma rápida avaliação no nosso site, me ajuda imensamente a crescer:\n👉 https://esteticaraphaelymengel.com.br\n\nSe precisar de qualquer dica pós-procedimento, é só me chamar aqui! Um grande beijo! 💅`;
+    const message = `Oi, ${firstName}! ✨ Passando para agradecer de coração pelo carinho da sua visita hoje no Studio Raphaely Mengel! Amei fazer seu(sua) ${app.procedureName}. Como estão suas unhas? Espero que esteja se sentindo maravilhosa! 💕\n\nSe você puder tirar 30 segundinhos para deixar uma rápida avaliação no nosso site, me ajuda imensamente a crescer:\n👉 https://studioraphaelymengel.site\n\nSe precisar de qualquer dica pós-procedimento, é só me chamar aqui! Um grande beijo! 💅`;
     
     openWhatsApp(app.clientPhone, message);
     markThankYouSent(app.id);
@@ -80,7 +80,7 @@ export const AdminPostCareMessages: React.FC = () => {
           <span className="text-[11px] text-[#7E706B]">Enviada direto no WhatsApp da cliente</span>
         </div>
         <p className="text-xs sm:text-sm text-[#2C201C]/90 italic bg-white p-4 rounded-2xl border border-[#EFE4DE] leading-relaxed">
-          "Oi, <strong>[Nome]</strong>! ✨ Passando para agradecer de coração pelo carinho da sua visita hoje no Studio Raphaely Mengel! Amei fazer seu <strong>[Procedimento]</strong>. Como estão suas unhas? Espero que esteja se sentindo maravilhosa! 💕 Se puder tirar 30 segundinhos para deixar sua avaliação no nosso site, me ajuda imensamente: https://esteticaraphaelymengel.com.br Qualquer dúvida com seus cuidados pós-procedimento, é só me chamar!"
+          "Oi, <strong>[Nome]</strong>! ✨ Passando para agradecer de coração pelo carinho da sua visita hoje no Studio Raphaely Mengel! Amei fazer seu <strong>[Procedimento]</strong>. Como estão suas unhas? Espero que esteja se sentindo maravilhosa! 💕 Se puder tirar 30 segundinhos para deixar sua avaliação no nosso site, me ajuda imensamente: https://studioraphaelymengel.site Qualquer dúvida com seus cuidados pós-procedimento, é só me chamar!"
         </p>
       </div>
 
