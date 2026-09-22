@@ -488,6 +488,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return c;
     }));
 
+    // Se alterou nome, telefone ou nascimento, atualiza os agendamentos correspondentes
+    if (updates.name || updates.phone || updates.birthDate) {
+      setAppointments(prev => prev.map(app => {
+        if (app.clientId === id || (updates.phone && app.clientPhone && app.clientPhone.replace(/\D/g, '') === updates.phone.replace(/\D/g, ''))) {
+          const appUpdates: Partial<Appointment> = {};
+          if (updates.name) appUpdates.clientName = updates.name;
+          if (updates.phone) appUpdates.clientPhone = updates.phone;
+          if (updates.birthDate) appUpdates.clientBirthDate = updates.birthDate;
+          const updatedApp = { ...app, ...appUpdates };
+          if (supabase && isSupabaseConfigured) {
+            supabase.from('appointments').update(mapAppointmentToRow(updatedApp)).eq('id', app.id).then();
+          }
+          return updatedApp;
+        }
+        return app;
+      }));
+    }
+
     if (currentClient && currentClient.id === id) {
       setCurrentClient(prev => prev ? { ...prev, ...updates } : null);
     }

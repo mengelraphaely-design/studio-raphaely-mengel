@@ -95,14 +95,18 @@ export const ClientLoginModal: React.FC<ClientLoginModalProps> = ({ onClose }) =
 
           {/* Data de Nascimento */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-[#7E706B] mb-1.5">
-              Data de Nascimento
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[#7E706B]">
+                Data de Nascimento
+              </label>
+              <span className="text-[10px] text-amber-800 font-medium">🎂 Seu Aniversário</span>
+            </div>
             <div className="relative">
               <Calendar className="w-4 h-4 text-[#8B5A51] absolute left-4 top-1/2 -translate-y-1/2" />
               <input
                 type="date"
                 required
+                max={new Date().toISOString().split('T')[0]}
                 value={birthDate}
                 onChange={(e) => {
                   setBirthDate(e.target.value);
@@ -111,6 +115,9 @@ export const ClientLoginModal: React.FC<ClientLoginModalProps> = ({ onClose }) =
                 className="w-full pl-11 pr-4 py-3 rounded-xl border border-[#EFE4DE] focus:outline-none focus:ring-2 focus:ring-[#8B5A51] text-sm text-[#2C201C]"
               />
             </div>
+            <p className="text-[10px] text-[#7E706B] mt-1">
+              Coloque o dia, mês e ano em que você nasceu (não coloque a data de hoje).
+            </p>
           </div>
 
           {/* Mensagem de Erro */}

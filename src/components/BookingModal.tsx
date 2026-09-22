@@ -12,7 +12,8 @@ import {
   User, 
   Phone, 
   AlertCircle,
-  BellRing
+  BellRing,
+  Gift
 } from 'lucide-react';
 
 interface BookingModalProps {
@@ -124,6 +125,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({ initialProcedure, on
   const handleSubmitBooking = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProcedure || !selectedDate || !selectedTime) return;
+
+    // Se a cliente colocou o ano atual ou recente no nascimento (confundiu com hoje)
+    if (clientBirthDate) {
+      const year = parseInt(clientBirthDate.split('-')[0], 10);
+      if (year >= 2024) {
+        const confirmed = window.confirm(
+          `⚠️ Atenção: Você informou o nascimento no ano ${year} (${clientBirthDate.split('-').reverse().join('/')}).\n\nLembre-se que este campo é para o ano em que VOCÊ NASCEU (não coloque a data de hoje nem a data do agendamento).\n\nDeseja confirmar este ano de nascimento?`
+        );
+        if (!confirmed) return;
+      }
+    }
 
     const res = requestOnlineBooking({
       clientName: clientName.trim(),
@@ -395,39 +407,75 @@ export const BookingModal: React.FC<BookingModalProps> = ({ initialProcedure, on
 
               {/* Dados da Cliente */}
               <div className="pt-2 border-t border-[#EFE4DE] space-y-3">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[#7E706B]">
-                  4. Seus Dados para Confirmação
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#7E706B]">
+                    4. Seus Dados para Confirmação
+                  </label>
+                  <span className="text-[10px] text-[#8B5A51] font-medium">Preencha com atenção</span>
+                </div>
 
                 <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    Nome Completo <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="text"
                     required
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
-                    placeholder="Seu Nome Completo"
+                    placeholder="Ex: Beatriz Pereira"
                     className="w-full px-4 py-2.5 rounded-xl border border-[#EFE4DE] text-xs sm:text-sm text-[#2C201C] focus:outline-none focus:ring-1 focus:ring-[#8B5A51]"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    WhatsApp para Confirmação (com DDD) <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="tel"
                     required
                     value={clientPhone}
                     onChange={handlePhoneChange}
-                    placeholder="WhatsApp (79) 99999-9999"
+                    placeholder="(79) 99999-9999"
                     className="w-full px-4 py-2.5 rounded-xl border border-[#EFE4DE] text-xs sm:text-sm text-[#2C201C] focus:outline-none focus:ring-1 focus:ring-[#8B5A51]"
                   />
+                </div>
+
+                {/* Último Campo: Data de Nascimento (com destaque e aviso claro) */}
+                <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/90 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-[#8B5A51] flex items-center gap-1.5">
+                      <Gift className="w-4 h-4 text-amber-600" />
+                      <span>Data de Nascimento (Seu Aniversário)</span>
+                      <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-md bg-amber-200/80 text-amber-900 border border-amber-300">
+                      Último Campo
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-[#7E706B] leading-tight">
+                    🎂 <strong>Atenção:</strong> Não coloque a data de hoje nem a data do agendamento! Coloque o <strong>dia, mês e ano em que você nasceu</strong> para ganhar mimos exclusivos e acessar seus agendamentos.
+                  </p>
 
                   <input
                     type="date"
                     required
+                    max={new Date().toISOString().split('T')[0]}
                     value={clientBirthDate}
                     onChange={(e) => setClientBirthDate(e.target.value)}
-                    title="Data de Nascimento (para seu login sem senha e mimos)"
-                    className="w-full px-4 py-2.5 rounded-xl border border-[#EFE4DE] text-xs sm:text-sm text-[#2C201C] focus:outline-none focus:ring-1 focus:ring-[#8B5A51]"
+                    className="w-full px-4 py-2.5 rounded-xl border border-amber-300 bg-white text-xs sm:text-sm text-[#2C201C] focus:outline-none focus:ring-2 focus:ring-[#8B5A51]"
                   />
+
+                  {clientBirthDate && parseInt(clientBirthDate.split('-')[0], 10) >= 2024 && (
+                    <div className="p-2 rounded-xl bg-rose-50 border border-rose-200 text-[11px] text-rose-700 font-semibold flex items-center gap-1.5 animate-pulse">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>
+                        Atenção: O ano colocado foi {clientBirthDate.split('-')[0]}. Coloque o ano em que você nasceu (ex: 1998, 2002)!
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
