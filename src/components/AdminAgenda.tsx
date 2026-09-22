@@ -16,7 +16,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   CheckCircle2,
-  MessageCircle
+  MessageCircle,
+  RefreshCw
 } from 'lucide-react';
 import { Appointment, AppointmentStatus } from '../types';
 import { openWhatsApp, getReminderWhatsAppMessage, STUDIO_NAME } from '../utils/whatsapp';
@@ -32,7 +33,9 @@ export const AdminAgenda: React.FC = () => {
     addAppointment, 
     clients, 
     procedures,
-    pendingAppointments 
+    pendingAppointments,
+    syncFromCloud,
+    isSyncing
   } = useApp();
   
   const [selectedDateFilter, setSelectedDateFilter] = useState<'hoje' | 'amanha' | 'todos'>('todos');
@@ -47,8 +50,11 @@ export const AdminAgenda: React.FC = () => {
   const [newTime, setNewTime] = useState('14:00');
   const [newNotes, setNewNotes] = useState('');
 
-  const todayStr = '2026-09-21';
-  const tomorrowStr = '2026-09-22';
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const tomorrowDate = new Date(now);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowStr = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
 
   // Filtragem de agendamentos
   const filteredAppointments = appointments.filter(app => {
@@ -228,13 +234,25 @@ export const AdminAgenda: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowNewModal(true)}
-          className="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-[#8B5A51] hover:bg-[#73433a] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Novo Encaixe Manual</span>
-        </button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <button
+            onClick={() => syncFromCloud()}
+            disabled={isSyncing}
+            className="flex-1 sm:flex-initial px-4 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 text-[#8B5A51] border border-amber-200 text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-colors"
+            title="Sincronizar com o banco de dados na nuvem"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-amber-700 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Atualizando...' : 'Atualizar 🔄'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowNewModal(true)}
+            className="flex-1 sm:flex-initial px-5 py-2.5 rounded-2xl bg-[#8B5A51] hover:bg-[#73433a] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Novo Encaixe</span>
+          </button>
+        </div>
       </div>
 
       {/* Filtros de Data e Status */}

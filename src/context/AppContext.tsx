@@ -94,9 +94,11 @@ interface AppContextType {
     date: string;
     time: string;
     notes?: string;
-  }) => { success: boolean; appointment: Appointment };
-  approveAppointment: (id: string) => void;
-  rejectAppointment: (id: string, reason?: string) => void;
+  }) => Promise<{ success: boolean; appointment: Appointment }>;
+  approveAppointment: (id: string) => Promise<void>;
+  rejectAppointment: (id: string, reason?: string) => Promise<void>;
+  syncFromCloud: () => Promise<void>;
+  isSyncing: boolean;
   addAppointment: (appointment: Omit<Appointment, 'id'>) => Appointment;
   updateAppointmentStatus: (id: string, status: AppointmentStatus) => void;
   markReminderSent: (id: string) => void;
@@ -255,24 +257,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [isAdminLoggedIn]);
 
   // =========================================================================
-  // SINCRONIZAÇÃO NUVEM SUPABASE + TEMPO REAL + RESGATE DE DADOS LOCAIS DA RAPHA
+  // SINCRONIZAÇÃO NUVEM SUPABASE + TEMPO REAL + AUTO-POLLING ROBUSTO
   // =========================================================================
-  useEffect(() => {
-    let isMounted = true;
+  const [isSyncing, setIsSyncing] = useState(false);
 
-    async function initSupabaseCloud() {
-      // 1. PRIMEIRO: Resgata qualquer agendamento ou cliente criado no iPhone da Rapha e sobe pro Supabase
-      await rescueLocalDataToSupabase();
+  // Sincronização centralizada com o Supabase (para web, mobile Safari e PWA)
+  const syncFromCloud = async () => {
+    if (!supabase || !isSupabaseConfigured) return;
+    setIsSyncing(true);
 
-      // 2. SEGUNDO: Baixa o estado mais recente do Supabase (para todos os celulares sincronizarem)
+    try {
       const cloudData = await fetchInitialSupabaseData();
-      if (cloudData && isMounted) {
+      if (cloudData) {
         if (cloudData.appointments) {
           setAppointments(prev => {
-            // Mesclar evitando duplicatas
-            const merged = [...cloudData.appointments!];
+            const cloudMap = new Map(cloudData.appointments!.map(a => [a.id, a]));
+            
+            // Detectar se chegaram novos agendamentos pendentes pela nuvem
+            const prevPendingIds = new Set(prev.filter(a => a.status === 'pendente').map(a => a.id));
+            const newPendings = cloudData.appointments!.filter(
+              a => a.status === 'pendente' && !prevPendingIds.has(a.id)
+            );
+            if (newPendings.length > 0) {
+              playNotificationBell();
+              const latest = newPendings[0];
+              showBrowserNotification(
+                'Studio Raphaely Mengel 🔔',
+                `Nova solicitação de ${latest.clientName} (${latest.procedureName})!`
+              );
+            }
+
+            // Atualiza status e campos de todos os agendamentos conforme a nuvem
+            const merged = cloudData.appointments!.map(cloudApp => {
+              return cloudApp;
+            });
+
+            // Preserva itens locais se existirem
             for (const local of prev) {
-              if (!merged.some(m => m.id === local.id)) {
+              if (!cloudMap.has(local.id)) {
                 merged.push(local);
               }
             }
@@ -280,7 +302,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
-        // Limpeza de cache local antigo
+        // Limpeza de cache local de clientes de mock antigos
         try {
           for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
@@ -318,90 +340,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setScheduleSettings(prev => mapRowToSettings(cloudData.settingsRow, prev));
         }
       }
+    } catch (err) {
+      console.error('[Cloud Sync Error]:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initialBootstrap() {
+      // 1. Resgata atendimentos e clientes locais no primeiro carregamento
+      await rescueLocalDataToSupabase();
+      // 2. Busca o estado mais recente do Supabase
+      if (isMounted) {
+        await syncFromCloud();
+      }
     }
 
-    initSupabaseCloud();
+    initialBootstrap();
 
-    // 3. TERCEIRO: Conectar WebSocket Realtime do Supabase
+    // 3. Polling em segundo plano a cada 8 segundos (garante sincronia total no iPhone/PC)
+    const pollInterval = setInterval(() => {
+      if (isMounted && typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        syncFromCloud();
+      }
+    }, 8000);
+
+    // 4. Ao desbloquear o celular, voltar para a aba ou trocar de aplicativo
+    const handleVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        syncFromCloud();
+      }
+    };
+    const handleFocus = () => {
+      syncFromCloud();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('visibilitychange', handleVisibility);
+      window.addEventListener('focus', handleFocus);
+    }
+
+    // 5. Conectar WebSocket Realtime do Supabase
+    let channel: any = null;
     if (supabase && isSupabaseConfigured) {
-      const channel = supabase
+      channel = supabase
         .channel('studio-realtime-sync')
-        // Agendamentos em Tempo Real
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, payload => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => {
           if (!isMounted) return;
-          if (payload.eventType === 'INSERT') {
-            const newApp = mapRowToAppointment(payload.new);
-            setAppointments(prev => {
-              if (prev.some(a => a.id === newApp.id)) return prev;
-              return [newApp, ...prev];
-            });
-
-            // Toca o sininho e dispara notificação no celular
-            playNotificationBell();
-            showBrowserNotification(
-              'Studio Raphaely Mengel 🔔',
-              `Novo agendamento de ${newApp.clientName} (${newApp.procedureName}) para ${newApp.date} às ${newApp.time}!`
-            );
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedApp = mapRowToAppointment(payload.new);
-            setAppointments(prev => prev.map(a => a.id === updatedApp.id ? updatedApp : a));
-          } else if (payload.eventType === 'DELETE') {
-            const oldId = (payload.old as any)?.id;
-            if (oldId) {
-              setAppointments(prev => prev.filter(a => a.id !== oldId));
-            }
-          }
+          syncFromCloud();
         })
-        // Clientes em Tempo Real
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, payload => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, () => {
           if (!isMounted) return;
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const updatedCli = mapRowToClient(payload.new);
-            if (!MOCK_CLIENT_IDS.has(updatedCli.id)) {
-              setClients(prev => {
-                const exists = prev.some(c => c.id === updatedCli.id);
-                return exists ? prev.map(c => c.id === updatedCli.id ? updatedCli : c) : [updatedCli, ...prev];
-              });
-            }
-          } else if (payload.eventType === 'DELETE') {
-            const oldId = (payload.old as any)?.id;
-            if (oldId) {
-              setClients(prev => prev.filter(c => c.id !== oldId));
-            }
-          }
+          syncFromCloud();
         })
-        // Transações em Tempo Real
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, payload => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
           if (!isMounted) return;
-          if (payload.eventType === 'INSERT') {
-            const newTx = mapRowToTransaction(payload.new);
-            setTransactions(prev => prev.some(t => t.id === newTx.id) ? prev : [newTx, ...prev]);
-          } else if (payload.eventType === 'DELETE') {
-            const oldId = (payload.old as any)?.id;
-            if (oldId) setTransactions(prev => prev.filter(t => t.id !== oldId));
-          }
+          syncFromCloud();
         })
-        // Feedbacks em Tempo Real
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'feedbacks' }, payload => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'feedbacks' }, () => {
           if (!isMounted) return;
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const updatedFb = mapRowToFeedback(payload.new);
-            setFeedbacks(prev => {
-              const exists = prev.some(f => f.id === updatedFb.id);
-              return exists ? prev.map(f => f.id === updatedFb.id ? updatedFb : f) : [updatedFb, ...prev];
-            });
-          }
+          syncFromCloud();
         })
         .subscribe();
-
-      return () => {
-        isMounted = false;
-        supabase?.removeChannel(channel);
-      };
     }
 
     return () => {
       isMounted = false;
+      clearInterval(pollInterval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('visibilitychange', handleVisibility);
+        window.removeEventListener('focus', handleFocus);
+      }
+      if (channel && supabase) {
+        supabase.removeChannel(channel);
+      }
     };
   }, []);
 
@@ -673,7 +688,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 4. Solicitação de Agendamento Online Direto (Local + Nuvem Supabase)
-  const requestOnlineBooking = (bookingData: {
+  const requestOnlineBooking = async (bookingData: {
     clientName: string;
     clientPhone: string;
     clientBirthDate?: string;
@@ -681,7 +696,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     date: string;
     time: string;
     notes?: string;
-  }): { success: boolean; appointment: Appointment } => {
+  }): Promise<{ success: boolean; appointment: Appointment }> => {
     const selectedProc = procedures.find(p => p.id === bookingData.procedureId) || procedures[0];
 
     let clientMatch = clients.find(c => {
@@ -691,7 +706,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     if (!clientMatch) {
-      clientMatch = addClient({
+      clientMatch = {
+        id: `cli-${Date.now()}`,
         name: bookingData.clientName,
         phone: bookingData.clientPhone,
         birthDate: bookingData.clientBirthDate || '1995-01-01',
@@ -702,7 +718,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         favoriteProcedures: [selectedProc.name],
         totalAppointments: 0,
         totalSpent: 0
-      });
+      };
+      setClients(prev => [clientMatch!, ...prev]);
+
+      // CRÍTICO: Inserir e AGUARDAR o cliente no Supabase ANTES do agendamento
+      // para não violar a foreign key constraint "appointments_client_id_fkey"
+      if (supabase && isSupabaseConfigured) {
+        try {
+          const { error: cliErr } = await supabase.from('clients').upsert(mapClientToRow(clientMatch));
+          if (cliErr) {
+            console.error('[Supabase Insert Client Error]:', cliErr);
+          }
+        } catch (e) {
+          console.error('[Supabase Client Upsert Exception]:', e);
+        }
+      }
+    } else if (bookingData.clientBirthDate && (!clientMatch.birthDate || clientMatch.birthDate.startsWith('202'))) {
+      updateClient(clientMatch.id, { birthDate: bookingData.clientBirthDate });
     }
 
     const newApp: Appointment = {
@@ -726,11 +758,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setAppointments(prev => [newApp, ...prev]);
 
-    // Enviar imediatamente para o Supabase
+    // Enviar para o Supabase e aguardar confirmação
     if (supabase && isSupabaseConfigured) {
-      supabase.from('appointments').insert([mapAppointmentToRow(newApp)]).then(({ error }) => {
-        if (error) console.error('[Supabase Insert Appointment Error]:', error);
-      });
+      try {
+        const { error: appErr } = await supabase.from('appointments').upsert(mapAppointmentToRow(newApp));
+        if (appErr) {
+          console.error('[Supabase Insert Appointment Error]:', appErr);
+          // Fallback de segurança se houver conflito de foreign key
+          if (appErr.code === '23503') {
+            await supabase.from('appointments').upsert({
+              ...mapAppointmentToRow(newApp),
+              client_id: null
+            });
+          }
+        }
+      } catch (e) {
+        console.error('[Supabase Appointment Upsert Exception]:', e);
+      }
     }
 
     if (!currentClient) {
@@ -749,7 +793,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAppointments(prev => [newApp, ...prev]);
 
     if (supabase && isSupabaseConfigured) {
-      supabase.from('appointments').insert([mapAppointmentToRow(newApp)]).then(({ error }) => {
+      supabase.from('appointments').upsert(mapAppointmentToRow(newApp)).then(({ error }) => {
         if (error) console.error('[Supabase Manual Appointment Error]:', error);
       });
     }
@@ -758,7 +802,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 6. Rapha Aprova Agendamento (Local + Nuvem Supabase)
-  const approveAppointment = (id: string) => {
+  const approveAppointment = async (id: string) => {
     const approvedAt = new Date().toISOString();
     setAppointments(prev => prev.map(a => {
       if (a.id === id) {
@@ -768,12 +812,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     if (supabase && isSupabaseConfigured) {
-      supabase.from('appointments').update({ status: 'confirmado', approved_at: approvedAt }).eq('id', id).then();
+      try {
+        const { error } = await supabase
+          .from('appointments')
+          .update({ status: 'confirmado', approved_at: approvedAt })
+          .eq('id', id);
+        if (error) {
+          console.error('[Supabase Approve Error]:', error);
+        }
+      } catch (e) {
+        console.error('[Supabase Approve Exception]:', e);
+      }
     }
   };
 
   // 7. Rapha Recusa Agendamento (Local + Nuvem Supabase)
-  const rejectAppointment = (id: string, reason?: string) => {
+  const rejectAppointment = async (id: string, reason?: string) => {
     setAppointments(prev => prev.map(a => {
       if (a.id === id) {
         const notes = reason ? `${a.notes || ''} (Recusado: ${reason})` : a.notes;
@@ -783,7 +837,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     if (supabase && isSupabaseConfigured) {
-      supabase.from('appointments').update({ status: 'cancelado' }).eq('id', id).then();
+      try {
+        const { error } = await supabase
+          .from('appointments')
+          .update({ status: 'cancelado' })
+          .eq('id', id);
+        if (error) {
+          console.error('[Supabase Reject Error]:', error);
+        }
+      } catch (e) {
+        console.error('[Supabase Reject Exception]:', e);
+      }
     }
   };
 
@@ -1042,7 +1106,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         newClients,
         resetDataToDefault,
         triggerBellNotification,
-        enableBrowserNotifications
+        enableBrowserNotifications,
+        syncFromCloud,
+        isSyncing
       }}
     >
       {children}

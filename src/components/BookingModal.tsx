@@ -101,6 +101,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ initialProcedure, on
   const [clientBirthDate, setClientBirthDate] = useState(currentClient?.birthDate || '');
   const [notes, setNotes] = useState('');
   const [submittedAppointment, setSubmittedAppointment] = useState<any>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedProcedure = procedures.find(p => p.id === selectedProcId) || procedures[0];
 
@@ -122,9 +123,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({ initialProcedure, on
     setClientPhone(v);
   };
 
-  const handleSubmitBooking = (e: React.FormEvent) => {
+  const handleSubmitBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProcedure || !selectedDate || !selectedTime) return;
+    if (!selectedProcedure || !selectedDate || !selectedTime || isSubmitting) return;
 
     // Se a cliente colocou o ano atual ou recente no nascimento (confundiu com hoje)
     if (clientBirthDate) {
@@ -137,19 +138,27 @@ export const BookingModal: React.FC<BookingModalProps> = ({ initialProcedure, on
       }
     }
 
-    const res = requestOnlineBooking({
-      clientName: clientName.trim(),
-      clientPhone: clientPhone.trim(),
-      clientBirthDate: clientBirthDate.trim(),
-      procedureId: selectedProcedure.id,
-      date: selectedDate,
-      time: selectedTime,
-      notes: notes.trim()
-    });
+    setIsSubmitting(true);
+    try {
+      const res = await requestOnlineBooking({
+        clientName: clientName.trim(),
+        clientPhone: clientPhone.trim(),
+        clientBirthDate: clientBirthDate.trim(),
+        procedureId: selectedProcedure.id,
+        date: selectedDate,
+        time: selectedTime,
+        notes: notes.trim()
+      });
 
-    if (res.success) {
-      setSubmittedAppointment(res.appointment);
-      setStep('success');
+      if (res.success) {
+        setSubmittedAppointment(res.appointment);
+        setStep('success');
+      }
+    } catch (err) {
+      console.error('[Booking Error]:', err);
+      alert('Não foi possível concluir a solicitação. Por favor, tente novamente ou entre em contato pelo WhatsApp.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -483,18 +492,20 @@ export const BookingModal: React.FC<BookingModalProps> = ({ initialProcedure, on
               <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={!selectedTime}
+                  disabled={!selectedTime || isSubmitting}
                   className={`w-full py-4 px-6 rounded-2xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
-                    selectedTime
+                    selectedTime && !isSubmitting
                       ? 'bg-[#8B5A51] hover:bg-[#73433a] text-white transform active:scale-95'
                       : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
                   }`}
                 >
-                  <CheckCircle2 className="w-5 h-5" />
+                  <CheckCircle2 className={`w-5 h-5 ${isSubmitting ? 'animate-spin' : ''}`} />
                   <span>
-                    {selectedTime 
-                      ? `Solicitar Agendamento (${selectedDate.split('-').reverse().join('/')} às ${selectedTime})`
-                      : 'Selecione um horário para continuar'}
+                    {isSubmitting
+                      ? 'Enviando sua solicitação para a Rapha...'
+                      : selectedTime 
+                        ? `Solicitar Agendamento (${selectedDate.split('-').reverse().join('/')} às ${selectedTime})`
+                        : 'Selecione um horário para continuar'}
                   </span>
                 </button>
                 <p className="text-[11px] text-center text-[#7E706B] mt-2">
