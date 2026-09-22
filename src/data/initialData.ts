@@ -455,41 +455,8 @@ export const initialTransactions: Transaction[] = [
 ];
 
 // Feedbacks / Avaliações Reais
-export const initialFeedbacks: Feedback[] = [
-  {
-    id: 'feed-1',
-    clientId: 'cli-camila',
-    clientName: 'Camila Rocha',
-    procedureName: 'Manutenção de Alongamento',
-    stars: 5,
-    comment: 'A Rapha tem um capricho que nunca vi igual em Aracaju! Minhas unhas duram 30 dias sem quebrar ou soltar. O atendimento é maravilhoso!',
-    createdAt: '2026-09-16T15:00:00.000Z',
-    status: 'publicado',
-    avatarUrl: '/portfolio/nail-1.jpg'
-  },
-  {
-    id: 'feed-2',
-    clientId: 'cli-sabrina',
-    clientName: 'Sabrina Rocha',
-    procedureName: 'Banho de Gel & Encapsulada',
-    stars: 5,
-    comment: 'O banho de gel salvou minhas unhas! Elas eram super frágeis e agora cresceram lindas e fortes. Recomendo de olhos fechados.',
-    createdAt: '2026-09-10T18:30:00.000Z',
-    status: 'publicado',
-    avatarUrl: '/portfolio/nail-6.jpg'
-  },
-  {
-    id: 'feed-3',
-    clientId: 'cli-bruna-tavares',
-    clientName: 'Bruna Tavares',
-    procedureName: 'Alongamento em Gel com Nail Art',
-    stars: 5,
-    comment: 'Levei uma foto do Pinterest super detalhada e ela fez ainda mais bonita! Nota mil.',
-    createdAt: '2026-09-09T14:20:00.000Z',
-    status: 'publicado',
-    avatarUrl: '/portfolio/nail-4.jpg'
-  }
-];
+// Feedbacks começam em branco para receber depoimentos reais das clientes
+export const initialFeedbacks: Feedback[] = [];
 
 export const initialTestimonials = initialFeedbacks;
 
