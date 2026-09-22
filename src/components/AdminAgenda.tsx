@@ -1,0 +1,525 @@
+import React, { useState } from 'react';
+import { useApp } from '../context/AppContext';
+import { 
+  Calendar, 
+  Clock, 
+  Send, 
+  Check, 
+  X, 
+  Plus, 
+  Phone, 
+  Filter, 
+  Sparkles,
+  AlertCircle,
+  CalendarDays,
+  BellRing,
+  ThumbsUp,
+  ThumbsDown,
+  CheckCircle2,
+  MessageCircle
+} from 'lucide-react';
+import { Appointment, AppointmentStatus } from '../types';
+import { openWhatsApp, getReminderWhatsAppMessage, STUDIO_NAME } from '../utils/whatsapp';
+
+export const AdminAgenda: React.FC = () => {
+  const { 
+    appointments, 
+    updateAppointmentStatus, 
+    approveAppointment, 
+    rejectAppointment, 
+    markReminderSent, 
+    markThankYouSent,
+    addAppointment, 
+    clients, 
+    procedures,
+    pendingAppointments 
+  } = useApp();
+  
+  const [selectedDateFilter, setSelectedDateFilter] = useState<'hoje' | 'amanha' | 'todos'>('todos');
+  const [statusFilter, setStatusFilter] = useState<AppointmentStatus | 'todos'>('todos');
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [approvedNotification, setApprovedNotification] = useState<Appointment | null>(null);
+
+  // Formulário de novo agendamento manual
+  const [newClientId, setNewClientId] = useState(clients[0]?.id || '');
+  const [newProcedureId, setNewProcedureId] = useState(procedures[0]?.id || '');
+  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newTime, setNewTime] = useState('14:00');
+  const [newNotes, setNewNotes] = useState('');
+
+  const todayStr = '2026-09-21';
+  const tomorrowStr = '2026-09-22';
+
+  // Filtragem de agendamentos
+  const filteredAppointments = appointments.filter(app => {
+    if (selectedDateFilter === 'hoje' && app.date !== todayStr) return false;
+    if (selectedDateFilter === 'amanha' && app.date !== tomorrowStr) return false;
+    if (statusFilter !== 'todos' && app.status !== statusFilter) return false;
+    return true;
+  }).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+
+  // Disparar lembrete 24h via WhatsApp
+  const handleSendReminder = (app: Appointment) => {
+    const [y, m, d] = app.date.split('-');
+    const dateFormatted = `${d}/${m}/${y}`;
+    const msg = getReminderWhatsAppMessage(app.clientName, app.procedureName, dateFormatted, app.time);
+    
+    openWhatsApp(app.clientPhone, msg);
+    markReminderSent(app.id);
+  };
+
+  // Rapha aceita a marcação
+  const handleApprove = (app: Appointment) => {
+    approveAppointment(app.id);
+    setApprovedNotification(app);
+  };
+
+  // Enviar mensagem de confirmação de aprovação para a cliente
+  const handleSendApprovalConfirmation = (app: Appointment) => {
+    const [y, m, d] = app.date.split('-');
+    const dateFormatted = `${d}/${m}/${y}`;
+    const msg = `Olá, ${app.clientName}! ✨ Aqui é a Rapha do Studio Raphaely Mengel.\n\nSua solicitação de agendamento foi *APROVADA* com sucesso! 💅✨\n\n🗓 *Data:* ${dateFormatted}\n⏰ *Horário:* ${app.time}\n💅 *Procedimento:* ${app.procedureName}\n📍 *Local:* Aracaju, SE\n\nSeu horário já está reservado com exclusividade. Te esperamos! 💕`;
+    openWhatsApp(app.clientPhone, msg);
+  };
+
+  const handleCreateAppointment = (e: React.FormEvent) => {
+    e.preventDefault();
+    const selectedClient = clients.find(c => c.id === newClientId);
+    const selectedProc = procedures.find(p => p.id === newProcedureId);
+
+    if (!selectedClient || !selectedProc) return;
+
+    addAppointment({
+      clientId: selectedClient.id,
+      clientName: selectedClient.name,
+      clientPhone: selectedClient.phone,
+      procedureId: selectedProc.id,
+      procedureName: selectedProc.name,
+      date: newDate,
+      time: newTime,
+      durationMinutes: selectedProc.durationMinutes,
+      price: selectedProc.price,
+      status: 'confirmado',
+      notes: newNotes,
+      reminderSent: false,
+      createdAt: new Date().toISOString(),
+      approvedAt: new Date().toISOString()
+    });
+
+    setShowNewModal(false);
+    setNewNotes('');
+  };
+
+  return (
+    <div className="space-y-6">
+      
+      {/* 🔴 CARD DE NOTIFICAÇÕES: Solicitações Aguardando Aprovação da Rapha */}
+      {pendingAppointments.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-2 border-amber-400/80 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                <BellRing className="w-5 h-5 animate-bounce" />
+              </div>
+              <div>
+                <h3 className="font-serif text-xl font-bold text-[#2C201C]">
+                  Solicitações Aguardando Sua Aprovação ({pendingAppointments.length})
+                </h3>
+                <p className="text-xs text-[#7E706B]">
+                  Clientes que escolheram dia e horário pelo site. Clique em "Aceitar" para confirmar e fechar a vaga!
+                </p>
+              </div>
+            </div>
+
+            <span className="text-[10px] font-bold px-3 py-1 rounded-full bg-amber-400 text-amber-950 uppercase tracking-wider animate-pulse hidden sm:inline">
+              Ação Necessária
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            {pendingAppointments.map(app => (
+              <div
+                key={app.id}
+                className="bg-white rounded-2xl p-4 border border-amber-300 shadow-sm flex flex-col justify-between space-y-3"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h4 className="font-serif text-lg font-bold text-[#2C201C]">{app.clientName}</h4>
+                      <p className="text-xs text-[#7E706B]">{app.clientPhone}</p>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900">
+                      Pendente
+                    </span>
+                  </div>
+
+                  <p className="text-xs font-semibold text-[#8B5A51] pt-1">
+                    {app.procedureName} • R$ {app.price},00
+                  </p>
+
+                  <div className="p-2 rounded-xl bg-[#FAF6F3] border border-[#EFE4DE] text-xs flex items-center justify-between">
+                    <span className="text-[#7E706B]">Horário Solicitado:</span>
+                    <span className="font-bold text-[#2C201C]">
+                      🗓 {app.date.split('-').reverse().join('/')} às {app.time}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2 border-t border-[#EFE4DE]">
+                  <button
+                    onClick={() => handleApprove(app)}
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                  >
+                    <ThumbsUp className="w-4 h-4" />
+                    <span>Aceitar Marcação</span>
+                  </button>
+
+                  <button
+                    onClick={() => rejectAppointment(app.id, 'Horário indisponível')}
+                    className="py-2.5 px-3 rounded-xl bg-zinc-100 hover:bg-rose-50 hover:text-rose-600 text-zinc-600 text-xs font-semibold transition-colors"
+                    title="Recusar"
+                  >
+                    <ThumbsDown className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Notificação pós-aprovação */}
+      {approvedNotification && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-emerald-900 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+            <div>
+              <p className="font-bold">Horário de {approvedNotification.clientName} aprovado com sucesso!</p>
+              <p className="text-[11px] text-emerald-700">A vaga já está bloqueada na sua agenda.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => handleSendApprovalConfirmation(approvedNotification)}
+              className="flex-1 sm:flex-initial px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Avisar Cliente no WhatsApp</span>
+            </button>
+            <button
+              onClick={() => setApprovedNotification(null)}
+              className="p-2 text-emerald-700 hover:bg-emerald-100 rounded-xl"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Top Bar da Agenda */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-[#EFE4DE] shadow-xs">
+        <div>
+          <h3 className="font-serif text-2xl font-bold text-[#2C201C]">
+            Agenda & Atendimentos
+          </h3>
+          <p className="text-xs text-[#7E706B] mt-0.5">
+            Visualize os atendimentos agendados e envie confirmações de 24h em 1 clique.
+          </p>
+        </div>
+
+        <button
+          onClick={() => setShowNewModal(true)}
+          className="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-[#8B5A51] hover:bg-[#73433a] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Novo Encaixe Manual</span>
+        </button>
+      </div>
+
+      {/* Filtros de Data e Status */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#FAF6F3] p-3 rounded-2xl border border-[#EFE4DE]">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          <button
+            onClick={() => setSelectedDateFilter('todos')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              selectedDateFilter === 'todos'
+                ? 'bg-[#8B5A51] text-white shadow-xs'
+                : 'bg-white text-[#7E706B] border border-[#EFE4DE]'
+            }`}
+          >
+            Todos os Dias
+          </button>
+          <button
+            onClick={() => setSelectedDateFilter('hoje')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              selectedDateFilter === 'hoje'
+                ? 'bg-[#8B5A51] text-white shadow-xs'
+                : 'bg-white text-[#7E706B] border border-[#EFE4DE]'
+            }`}
+          >
+            Hoje
+          </button>
+          <button
+            onClick={() => setSelectedDateFilter('amanha')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              selectedDateFilter === 'amanha'
+                ? 'bg-[#8B5A51] text-white shadow-xs'
+                : 'bg-white text-[#7E706B] border border-[#EFE4DE]'
+            }`}
+          >
+            Amanhã
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-[#7E706B] hidden sm:inline">Status:</span>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as any)}
+            className="px-3 py-1.5 rounded-xl bg-white border border-[#EFE4DE] text-xs text-[#2C201C] font-medium focus:outline-none focus:ring-1 focus:ring-[#8B5A51]"
+          >
+            <option value="todos">Todos os Status</option>
+            <option value="confirmado">Confirmados</option>
+            <option value="pendente">Pendentes</option>
+            <option value="concluido">Concluídos</option>
+            <option value="cancelado">Cancelados</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Lista de Atendimentos */}
+      <div className="space-y-3">
+        {filteredAppointments.length > 0 ? (
+          filteredAppointments.map((app) => (
+            <div
+              key={app.id}
+              className="bg-white rounded-3xl p-5 sm:p-6 border border-[#EFE4DE] shadow-xs hover:shadow-md transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+            >
+              {/* Informações do Agendamento */}
+              <div className="flex items-start gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-[#F4EAE6] text-[#8B5A51] flex flex-col items-center justify-center flex-shrink-0 font-bold">
+                  <span className="text-xs">{app.time}</span>
+                  <span className="text-[9px] uppercase text-[#7E706B]">{app.date.split('-')[2]}/{app.date.split('-')[1]}</span>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-serif text-lg font-bold text-[#2C201C]">{app.clientName}</h4>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                      app.status === 'confirmado'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : app.status === 'pendente'
+                        ? 'bg-amber-100 text-amber-800'
+                        : app.status === 'concluido'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {app.status === 'pendente' ? 'Aguardando Aprovação' : app.status}
+                    </span>
+                  </div>
+
+                  <p className="text-xs font-semibold text-[#8B5A51]">
+                    {app.procedureName} • R$ {app.price},00 ({app.durationMinutes} min)
+                  </p>
+
+                  <p className="text-[11px] text-[#7E706B] flex items-center gap-2">
+                    <span>{app.clientPhone}</span>
+                    {app.notes && <span>• Obs: {app.notes}</span>}
+                  </p>
+                </div>
+              </div>
+
+              {/* Ações Rápidas (Aprovar / WhatsApp / Concluir) */}
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-[#EFE4DE]">
+                
+                {/* Se estiver pendente, botão de aceitar direto aqui também */}
+                {app.status === 'pendente' && (
+                  <button
+                    onClick={() => handleApprove(app)}
+                    className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-colors"
+                  >
+                    <ThumbsUp className="w-3.5 h-3.5" />
+                    <span>Aceitar</span>
+                  </button>
+                )}
+
+                {/* Botão de Enviar Lembrete 24h no WhatsApp */}
+                {app.status === 'confirmado' && (
+                  <button
+                    onClick={() => handleSendReminder(app)}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs ${
+                      app.reminderSent
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                        : 'bg-[#8B5A51] text-white hover:bg-[#73433a]'
+                    }`}
+                    title="Abre o WhatsApp com a mensagem personalizada pronta para envio"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{app.reminderSent ? 'Lembrete Enviado' : 'Enviar Lembrete 24h'}</span>
+                  </button>
+                )}
+
+                {/* Concluir Atendimento */}
+                {app.status === 'confirmado' && (
+                  <button
+                    onClick={() => updateAppointmentStatus(app.id, 'concluido')}
+                    className="p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors"
+                    title="Marcar como Concluído"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                )}
+
+                {/* Enviar Agradecimento Pós-Sessão no WhatsApp */}
+                {app.status === 'concluido' && (
+                  <button
+                    onClick={() => {
+                      const firstName = app.clientName.split(' ')[0];
+                      const msg = `Oi, ${firstName}! ✨ Passando para agradecer de coração pelo carinho da sua visita hoje no Studio Raphaely Mengel! Amei fazer seu(sua) ${app.procedureName}. Como estão suas unhas? Espero que tenha amado! 💕\n\nSe você puder tirar 30 segundinhos para deixar uma rápida avaliação no nosso site, me ajuda demais:\n👉 https://esteticaraphaelymengel.com.br\n\nQualquer dúvida, estou à disposição!`;
+                      openWhatsApp(app.clientPhone, msg);
+                      markThankYouSent(app.id);
+                    }}
+                    className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                      app.thankYouSent 
+                        ? 'bg-[#FAF6F3] text-[#7E706B] border border-[#EFE4DE]'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                    }`}
+                    title="Enviar Agradecimento e Pedir Avaliação no WhatsApp"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>{app.thankYouSent ? 'Agradecido ✓' : 'Agradecer & Pedir Feedback'}</span>
+                  </button>
+                )}
+
+                {/* Cancelar */}
+                {app.status !== 'cancelado' && (
+                  <button
+                    onClick={() => updateAppointmentStatus(app.id, 'cancelado')}
+                    className="p-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors"
+                    title="Cancelar Agendamento"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="bg-white rounded-3xl p-10 text-center border border-[#EFE4DE] text-[#7E706B] space-y-2">
+            <CalendarDays className="w-10 h-10 mx-auto text-[#8B5A51]/40" />
+            <p className="text-sm font-semibold text-[#2C201C]">Nenhum agendamento encontrado para este filtro.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Modal de Novo Encaixe Manual */}
+      {showNewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-[#EFE4DE] relative">
+            <button
+              onClick={() => setShowNewModal(false)}
+              className="absolute top-5 right-5 p-2 text-[#7E706B] hover:text-[#2C201C] rounded-full"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h4 className="font-serif text-2xl font-bold text-[#2C201C] mb-4">
+              Novo Encaixe na Agenda
+            </h4>
+
+            <form onSubmit={handleCreateAppointment} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase text-[#7E706B] mb-1">
+                  Cliente
+                </label>
+                <select
+                  value={newClientId}
+                  onChange={(e) => setNewClientId(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-[#EFE4DE] text-sm text-[#2C201C]"
+                >
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} — {c.phone}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase text-[#7E706B] mb-1">
+                  Procedimento
+                </label>
+                <select
+                  value={newProcedureId}
+                  onChange={(e) => setNewProcedureId(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-[#EFE4DE] text-sm text-[#2C201C]"
+                >
+                  {procedures.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} (R$ {p.price})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-[#7E706B] mb-1">
+                    Data
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={newDate}
+                    onChange={(e) => setNewDate(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-[#EFE4DE] text-sm text-[#2C201C]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-[#7E706B] mb-1">
+                    Horário
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={newTime}
+                    onChange={(e) => setNewTime(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-[#EFE4DE] text-sm text-[#2C201C]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase text-[#7E706B] mb-1">
+                  Observações (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={newNotes}
+                  onChange={(e) => setNewNotes(e.target.value)}
+                  placeholder="Ex: Encaixe presencial"
+                  className="w-full px-4 py-3 rounded-xl border border-[#EFE4DE] text-sm text-[#2C201C]"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewModal(false)}
+                  className="flex-1 py-3 rounded-xl bg-[#FAF6F3] text-xs font-semibold text-[#7E706B]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 rounded-xl bg-[#8B5A51] hover:bg-[#73433a] text-xs font-semibold text-white shadow-xs"
+                >
+                  Salvar Horário
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};

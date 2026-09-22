@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="128" fill="#8B5A51"/>
+  <circle cx="256" cy="256" r="200" stroke="#E8D1CB" stroke-width="8" stroke-dasharray="8 12" opacity="0.6"/>
+  <path d="M256 120 C270 180, 320 220, 380 230 C320 240, 270 280, 256 340 C242 280, 192 240, 132 230 C192 220, 242 180, 256 120 Z" fill="#FDF8F6" />
+  <circle cx="256" cy="390" r="16" fill="#E8D1CB"/>
+  <text x="256" y="445" font-family="'Cormorant Garamond', serif" font-size="44" font-weight="600" fill="#FDF8F6" text-anchor="middle" letter-spacing="4">RAPHAELY</text>
+</svg>
