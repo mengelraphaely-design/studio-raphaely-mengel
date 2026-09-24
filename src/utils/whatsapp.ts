@@ -1,5 +1,5 @@
 // Studio Raphaely Mengel - Gerador de mensagens e links diretos para WhatsApp
-export const STUDIO_PHONE = '5579999000000'; // Telefone padrão de atendimento do Studio
+export const STUDIO_PHONE = '5579999913090'; // Telefone oficial de atendimento do Studio: (79) 99991-3090
 export const STUDIO_NAME = 'Studio Raphaely Mengel';
 
 export function cleanPhone(phone: string): string {
