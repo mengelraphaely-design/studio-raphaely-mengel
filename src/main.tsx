@@ -11,6 +11,15 @@ if ('serviceWorker' in navigator) {
       reg.update();
     }
   });
+
+  // Quando uma nova versão do app for instalada em segundo plano, atualiza a tela
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
+  });
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
