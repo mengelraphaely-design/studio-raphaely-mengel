@@ -441,6 +441,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (!isMounted) return;
           syncFromCloud();
         })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_settings' }, () => {
+          if (!isMounted) return;
+          syncFromCloud();
+        })
         .subscribe();
     }
 
@@ -642,6 +646,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Motor de Verificação de Disponibilidade de Datas
   const isDateSelectable = (dateStr: string): { selectable: boolean; reason?: string } => {
+    const todayStr = getLocalDateStr();
+    if (dateStr < todayStr) {
+      return { selectable: false, reason: 'Data anterior ao dia de hoje' };
+    }
+
     const [y, m, d] = dateStr.split('-').map(Number);
     const dateObj = new Date(y, m - 1, d);
     const dayOfWeek = dateObj.getDay(); // 0 = Domingo, 1 = Segunda, etc.
@@ -681,6 +690,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     let candidateSlots = [...scheduleSettings.defaultSlots];
+
+    // Se for na data de hoje, não exibir horários que já passaram (+30 min de antecedência mínima)
+    const todayStr = getLocalDateStr();
+    if (dateStr === todayStr) {
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      candidateSlots = candidateSlots.filter(s => timeStringToMinutes(s) > currentMinutes + 30);
+    }
 
     // Bloqueios de horários avulsos
     const blockedSlotsForDate = scheduleSettings.blockedSlots.filter(s => s.date === dateStr);

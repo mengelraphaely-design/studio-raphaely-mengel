@@ -367,6 +367,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ initialProcedure, on
                   <span>Ou escolha outra data no calendário:</span>
                   <input
                     type="date"
+                    min={toLocalDateString()}
                     value={selectedDate}
                     onChange={(e) => {
                       if (e.target.value) {

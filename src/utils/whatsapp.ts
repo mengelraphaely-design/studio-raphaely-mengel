@@ -27,11 +27,11 @@ export function getReminderWhatsAppMessage(clientName: string, procedureName: st
 }
 
 // 3. Mensagem de Aniversário com Bonificação / Mimo
-export function getBirthdayBonusWhatsAppMessage(clientName: string, bonusDescription: string = 'R$ 50 de desconto ou um Spa Labial de cortesia') {
+export function getBirthdayBonusWhatsAppMessage(clientName: string, bonusDescription: string = 'R$ 20 de desconto ou uma Nail Art de cortesia') {
   return `Parabéns pelo seu dia, ${clientName}! 🎂✨💐\n\nAqui é a Rapha do Studio Raphaely Mengel. Desejo muita luz, saúde, beleza e momentos especiais na sua vida!\n\nE claro, preparamos um presente especial para celebrar com você: você ganhou *${bonusDescription}* no seu próximo procedimento durante todo este seu mês de aniversário! 🎁✨\n\nVamos agendar um momento só seu de autocuidado? Me avise quando quer vir! 💕`;
 }
 
 // 4. Mensagem de Retenção / Saudade para clientes sumidas (30-60+ dias)
 export function getRetentionMimoWhatsAppMessage(clientName: string, lastProcedure: string, daysAgo: number) {
-  return `Oi, ${clientName}! Quanta saudade de você por aqui! 🥰✨\n\nPercebi que já faz ${daysAgo} dias desde sua última sessão de *${lastProcedure}*. A sua pele e o seu bem-estar merecem aquele momento de pausa e renovação!\n\nPreparei um *mimo exclusivo de retorno* para você nesta semana: agendando seu retorno agora, você ganha uma Hidratação Facial Ultrassônica de presente! 💆‍♀️🌸\n\nQual dia fica melhor para você tirar um tempinho para si mesma?`;
+  return `Oi, ${clientName}! Quanta saudade de você por aqui! 🥰✨\n\nPercebi que já faz ${daysAgo} dias desde sua última sessão de *${lastProcedure}*. Suas unhas merecem aquele momento de renovação e cuidado!\n\nPreparei um *mimo exclusivo de retorno* para você nesta semana: agendando seu retorno agora, você ganha uma Nail Art autoral ou Blindagem de presente! 💅🌸\n\nQual dia fica melhor para você tirar um tempinho para si mesma?`;
 }
