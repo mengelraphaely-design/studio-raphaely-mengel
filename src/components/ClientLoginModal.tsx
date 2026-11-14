@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { X, Phone, Calendar, Sparkles, CheckCircle2 } from 'lucide-react';
+import { toLocalDateString } from '../utils/dateUtils';
 
 interface ClientLoginModalProps {
   onClose: () => void;
@@ -106,7 +107,7 @@ export const ClientLoginModal: React.FC<ClientLoginModalProps> = ({ onClose }) =
               <input
                 type="date"
                 required
-                max={new Date().toISOString().split('T')[0]}
+                max={toLocalDateString()}
                 value={birthDate}
                 onChange={(e) => {
                   setBirthDate(e.target.value);

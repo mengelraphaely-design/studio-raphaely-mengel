@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { toLocalDateString } from '../utils/dateUtils';
 import { 
   Calendar, 
   Clock, 
@@ -37,13 +38,13 @@ export const AdminScheduleSettings: React.FC = () => {
 
   // Bloqueio de turno
   const [showShiftModal, setShowShiftModal] = useState(false);
-  const [shiftDate, setShiftDate] = useState(new Date().toISOString().split('T')[0]);
+  const [shiftDate, setShiftDate] = useState(toLocalDateString());
   const [shiftType, setShiftType] = useState<'manha' | 'tarde'>('manha');
   const [shiftReason, setShiftReason] = useState('');
 
   // Bloqueio de horário individual
   const [showSlotModal, setShowSlotModal] = useState(false);
-  const [slotDate, setSlotDate] = useState(new Date().toISOString().split('T')[0]);
+  const [slotDate, setSlotDate] = useState(toLocalDateString());
   const [slotTime, setSlotTime] = useState('14:00');
   const [slotReason, setSlotReason] = useState('');
 

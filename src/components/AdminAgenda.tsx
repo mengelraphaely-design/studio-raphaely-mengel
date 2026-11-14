@@ -18,18 +18,30 @@ import {
   MessageCircle,
   RefreshCw,
   Edit3,
-  CheckCircle2
+  CheckCircle2,
+  CalendarX,
+  Trash2,
+  Sun,
+  Sunset,
+  ExternalLink
 } from 'lucide-react';
 import { Appointment, AppointmentStatus } from '../types';
 import { openWhatsApp, getReminderWhatsAppMessage, STUDIO_NAME } from '../utils/whatsapp';
+import { toLocalDateString, formatDateBR } from '../utils/dateUtils';
 
-export const AdminAgenda: React.FC = () => {
+interface AdminAgendaProps {
+  onNavigateTab?: (tab: any) => void;
+}
+
+export const AdminAgenda: React.FC<AdminAgendaProps> = ({ onNavigateTab }) => {
   const { 
     appointments, 
     updateAppointment,
     updateAppointmentStatus, 
     approveAppointment, 
     rejectAppointment, 
+    deleteAppointment,
+    clearPastPendingAppointments,
     markReminderSent, 
     markThankYouSent,
     addAppointment, 
@@ -37,13 +49,33 @@ export const AdminAgenda: React.FC = () => {
     procedures,
     pendingAppointments,
     syncFromCloud,
-    isSyncing
+    isSyncing,
+    scheduleSettings,
+    addBlockedSlot,
+    removeBlockedSlot,
+    addBlockedShift,
+    removeBlockedShift,
+    toggleBlockedDate
   } = useApp();
   
   const [selectedDateFilter, setSelectedDateFilter] = useState<'hoje' | 'amanha' | 'todos'>('todos');
   const [statusFilter, setStatusFilter] = useState<AppointmentStatus | 'todos'>('todos');
   const [showNewModal, setShowNewModal] = useState(false);
   const [approvedNotification, setApprovedNotification] = useState<Appointment | null>(null);
+
+  // Modal de Bloqueio Rápido de Horários/Dias
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [blockTab, setBlockTab] = useState<'slot' | 'shift' | 'date' | 'active'>('slot');
+  const [blockDate, setBlockDate] = useState(toLocalDateString());
+  const [blockTime, setBlockTime] = useState('14:00');
+  const [blockShift, setBlockShift] = useState<'manha' | 'tarde'>('manha');
+  const [blockReason, setBlockReason] = useState('');
+
+  // Total de bloqueios ativos
+  const totalActiveBlocks = 
+    scheduleSettings.blockedSlots.length + 
+    scheduleSettings.blockedShifts.length + 
+    scheduleSettings.blockedDates.length;
 
   // Modal de Concluir Atendimento & Ajuste de Valor/Financeiro
   const [concludingApp, setConcludingApp] = useState<Appointment | null>(null);
@@ -104,15 +136,44 @@ export const AdminAgenda: React.FC = () => {
   // Formulário de novo agendamento manual
   const [newClientId, setNewClientId] = useState(clients[0]?.id || '');
   const [newProcedureId, setNewProcedureId] = useState(procedures[0]?.id || '');
-  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newDate, setNewDate] = useState(toLocalDateString());
   const [newTime, setNewTime] = useState('14:00');
   const [newNotes, setNewNotes] = useState('');
 
   const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayStr = toLocalDateString(now);
   const tomorrowDate = new Date(now);
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-  const tomorrowStr = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
+  const tomorrowStr = toLocalDateString(tomorrowDate);
+
+  // Handlers para o Modal de Bloqueio Rápido
+  const handleAddSlotBlock = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blockDate || !blockTime) return;
+    addBlockedSlot({
+      date: blockDate,
+      time: blockTime,
+      reason: blockReason.trim() || 'Horário reservado'
+    });
+    setBlockReason('');
+    alert(`Horário ${blockTime} de ${formatDateBR(blockDate)} bloqueado com sucesso!`);
+  };
+
+  const handleAddShiftBlock = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blockDate) return;
+    addBlockedShift({
+      date: blockDate,
+      shift: blockShift,
+      reason: blockReason.trim() || `Turno da ${blockShift === 'manha' ? 'Manhã' : 'Tarde'} bloqueado`
+    });
+    setBlockReason('');
+    alert(`Turno da ${blockShift === 'manha' ? 'Manhã' : 'Tarde'} (${formatDateBR(blockDate)}) bloqueado com sucesso!`);
+  };
+
+  const handleToggleDayBlock = (dateToToggle: string) => {
+    toggleBlockedDate(dateToToggle);
+  };
 
   // Filtragem de agendamentos
   const filteredAppointments = appointments.filter(app => {
@@ -195,9 +256,25 @@ export const AdminAgenda: React.FC = () => {
               </div>
             </div>
 
-            <span className="text-[10px] font-bold px-3 py-1 rounded-full bg-amber-400 text-amber-950 uppercase tracking-wider animate-pulse hidden sm:inline">
-              Ação Necessária
-            </span>
+            <div className="flex items-center gap-2">
+              {pendingAppointments.some(a => a.date < todayStr) && (
+                <button
+                  onClick={async () => {
+                    const count = await clearPastPendingAppointments();
+                    alert(`${count} solicitação(ões) antiga(s) arquivada(s) com sucesso!`);
+                  }}
+                  className="text-[11px] font-bold px-3 py-1.5 rounded-xl bg-amber-200 hover:bg-amber-300 text-amber-950 flex items-center gap-1.5 transition-colors shadow-xs"
+                  title="Arquivar solicitações com datas anteriores a hoje"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Limpar Antigas ({pendingAppointments.filter(a => a.date < todayStr).length})</span>
+                </button>
+              )}
+
+              <span className="text-[10px] font-bold px-3 py-1 rounded-full bg-amber-400 text-amber-950 uppercase tracking-wider animate-pulse hidden sm:inline">
+                Ação Necessária
+              </span>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
@@ -248,11 +325,28 @@ export const AdminAgenda: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={() => rejectAppointment(app.id, 'Horário indisponível')}
+                    onClick={() => {
+                      const reason = window.prompt('Motivo da recusa (opcional):', 'Horário indisponível');
+                      if (reason !== null) {
+                        rejectAppointment(app.id, reason);
+                      }
+                    }}
                     className="py-2.5 px-3 rounded-xl bg-zinc-100 hover:bg-rose-50 hover:text-rose-600 text-zinc-600 text-xs font-semibold transition-colors"
                     title="Recusar"
                   >
                     <ThumbsDown className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Excluir permanentemente a solicitação de ${app.clientName}?`)) {
+                        deleteAppointment(app.id);
+                      }
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-zinc-100 hover:bg-rose-100 text-zinc-500 hover:text-rose-700 text-xs font-semibold transition-colors"
+                    title="Excluir Permanentemente"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -310,6 +404,20 @@ export const AdminAgenda: React.FC = () => {
           >
             <RefreshCw className={`w-3.5 h-3.5 text-amber-700 ${isSyncing ? 'animate-spin' : ''}`} />
             <span>{isSyncing ? 'Atualizando...' : 'Atualizar 🔄'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowBlockModal(true)}
+            className="flex-1 sm:flex-initial px-4 py-2.5 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-colors"
+            title="Bloquear data, turno ou horário específico na agenda"
+          >
+            <CalendarX className="w-4 h-4 text-rose-600" />
+            <span>Bloquear Horários</span>
+            {totalActiveBlocks > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-rose-200 text-rose-900 font-bold text-[10px]">
+                {totalActiveBlocks}
+              </span>
+            )}
           </button>
 
           <button
@@ -499,6 +607,21 @@ export const AdminAgenda: React.FC = () => {
                     title="Cancelar Agendamento"
                   >
                     <X className="w-4 h-4" />
+                  </button>
+                )}
+
+                {/* Excluir Definitivamente Registro Cancelado */}
+                {app.status === 'cancelado' && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Excluir definitivamente o registro cancelado de ${app.clientName}?`)) {
+                        deleteAppointment(app.id);
+                      }
+                    }}
+                    className="p-2.5 rounded-xl bg-zinc-100 hover:bg-rose-100 text-zinc-500 hover:text-rose-700 border border-zinc-200 transition-colors"
+                    title="Excluir Definitivamente"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 )}
 
@@ -884,6 +1007,335 @@ export const AdminAgenda: React.FC = () => {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🔴 MODAL DE BLOQUEIO RÁPIDO DE HORÁRIOS / DIAS (ACESSO DIRETO DA AGENDA) */}
+      {showBlockModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-[#EFE4DE] relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setShowBlockModal(false)}
+              className="absolute top-5 right-5 p-2 text-[#7E706B] hover:text-[#2C201C] rounded-full"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center">
+                <CalendarX className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-serif text-2xl font-bold text-[#2C201C]">
+                  Bloquear Horários & Dias
+                </h4>
+                <p className="text-xs text-[#7E706B]">
+                  Feche horários para que as clientes não consigam agendar pelo site.
+                </p>
+              </div>
+            </div>
+
+            {/* Abas do Modal de Bloqueio */}
+            <div className="grid grid-cols-4 gap-1 p-1 bg-[#FAF6F3] rounded-2xl border border-[#EFE4DE] my-4">
+              <button
+                type="button"
+                onClick={() => setBlockTab('slot')}
+                className={`py-2 px-1 text-[11px] font-bold rounded-xl transition-colors text-center ${
+                  blockTab === 'slot'
+                    ? 'bg-[#8B5A51] text-white shadow-xs'
+                    : 'text-[#7E706B] hover:text-[#2C201C]'
+                }`}
+              >
+                Horário Único
+              </button>
+              <button
+                type="button"
+                onClick={() => setBlockTab('shift')}
+                className={`py-2 px-1 text-[11px] font-bold rounded-xl transition-colors text-center ${
+                  blockTab === 'shift'
+                    ? 'bg-[#8B5A51] text-white shadow-xs'
+                    : 'text-[#7E706B] hover:text-[#2C201C]'
+                }`}
+              >
+                Turno
+              </button>
+              <button
+                type="button"
+                onClick={() => setBlockTab('date')}
+                className={`py-2 px-1 text-[11px] font-bold rounded-xl transition-colors text-center ${
+                  blockTab === 'date'
+                    ? 'bg-[#8B5A51] text-white shadow-xs'
+                    : 'text-[#7E706B] hover:text-[#2C201C]'
+                }`}
+              >
+                Dia Inteiro
+              </button>
+              <button
+                type="button"
+                onClick={() => setBlockTab('active')}
+                className={`py-2 px-1 text-[11px] font-bold rounded-xl transition-colors text-center relative ${
+                  blockTab === 'active'
+                    ? 'bg-[#8B5A51] text-white shadow-xs'
+                    : 'text-[#7E706B] hover:text-[#2C201C]'
+                }`}
+              >
+                Ativos ({totalActiveBlocks})
+              </button>
+            </div>
+
+            {/* ABA 1: BLOQUEAR HORÁRIO ÚNICO */}
+            {blockTab === 'slot' && (
+              <form onSubmit={handleAddSlotBlock} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    Data do Bloqueio
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    min={todayStr}
+                    value={blockDate}
+                    onChange={(e) => setBlockDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#EFE4DE] focus:outline-hidden focus:border-[#8B5A51]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    Horário a Bloquear
+                  </label>
+                  <select
+                    value={blockTime}
+                    onChange={(e) => setBlockTime(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#EFE4DE] bg-white text-[#2C201C] font-semibold focus:outline-hidden focus:border-[#8B5A51]"
+                  >
+                    {scheduleSettings.defaultSlots.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    Motivo (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Consulta médica, almoço, curso"
+                    value={blockReason}
+                    onChange={(e) => setBlockReason(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#EFE4DE] focus:outline-hidden focus:border-[#8B5A51]"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors"
+                >
+                  Confirmar Bloqueio deste Horário 🚫
+                </button>
+              </form>
+            )}
+
+            {/* ABA 2: BLOQUEAR TURNO */}
+            {blockTab === 'shift' && (
+              <form onSubmit={handleAddShiftBlock} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    Data do Bloqueio
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    min={todayStr}
+                    value={blockDate}
+                    onChange={(e) => setBlockDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#EFE4DE] focus:outline-hidden focus:border-[#8B5A51]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    Turno
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBlockShift('manha')}
+                      className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${
+                        blockShift === 'manha'
+                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                          : 'bg-white text-[#7E706B] border-[#EFE4DE]'
+                      }`}
+                    >
+                      <Sun className="w-4 h-4 text-amber-600" />
+                      <span>Manhã (até 12h)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBlockShift('tarde')}
+                      className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 ${
+                        blockShift === 'tarde'
+                          ? 'bg-orange-100 text-orange-900 border-orange-300'
+                          : 'bg-white text-[#7E706B] border-[#EFE4DE]'
+                      }`}
+                    >
+                      <Sunset className="w-4 h-4 text-orange-600" />
+                      <span>Tarde (após 12h)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    Motivo (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Assunto pessoal pela manhã"
+                    value={blockReason}
+                    onChange={(e) => setBlockReason(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#EFE4DE] focus:outline-hidden focus:border-[#8B5A51]"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors"
+                >
+                  Confirmar Bloqueio do Turno 🚫
+                </button>
+              </form>
+            )}
+
+            {/* ABA 3: BLOQUEAR DIA INTEIRO */}
+            {blockTab === 'date' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C201C] mb-1">
+                    Escolha a Data a Bloquear/Liberar
+                  </label>
+                  <input
+                    type="date"
+                    min={todayStr}
+                    value={blockDate}
+                    onChange={(e) => setBlockDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-[#EFE4DE] focus:outline-hidden focus:border-[#8B5A51]"
+                  />
+                </div>
+
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                  <p className="font-semibold">Status desta data:</p>
+                  <p className="mt-0.5">
+                    {scheduleSettings.blockedDates.includes(blockDate) ? (
+                      <span className="text-rose-700 font-bold">⛔ Fechada para agendamentos</span>
+                    ) : (
+                      <span className="text-emerald-700 font-bold">✅ Aberta normalmente</span>
+                    )}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleToggleDayBlock(blockDate);
+                    alert(
+                      scheduleSettings.blockedDates.includes(blockDate)
+                        ? `Data ${formatDateBR(blockDate)} reaberta com sucesso!`
+                        : `Data ${formatDateBR(blockDate)} bloqueada inteiramente!`
+                    );
+                  }}
+                  className={`w-full py-3 rounded-xl text-xs font-bold shadow-xs transition-colors ${
+                    scheduleSettings.blockedDates.includes(blockDate)
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      : 'bg-rose-600 hover:bg-rose-700 text-white'
+                  }`}
+                >
+                  {scheduleSettings.blockedDates.includes(blockDate)
+                    ? 'Desbloquear / Reabrir Este Dia ✅'
+                    : 'Bloquear Dia Inteiro 🚫'}
+                </button>
+              </div>
+            )}
+
+            {/* ABA 4: BLOQUEIOS ATIVOS */}
+            {blockTab === 'active' && (
+              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                {totalActiveBlocks === 0 ? (
+                  <div className="text-center py-6 text-xs text-[#7E706B]">
+                    Nenhum horário, turno ou dia bloqueado no momento.
+                  </div>
+                ) : (
+                  <>
+                    {/* Horários avulsos */}
+                    {scheduleSettings.blockedSlots.map(s => (
+                      <div key={s.id} className="p-2.5 bg-[#FAF6F3] rounded-xl border border-[#EFE4DE] flex items-center justify-between text-xs">
+                        <div>
+                          <span className="font-bold text-[#2C201C]">{formatDateBR(s.date)} às {s.time}</span>
+                          <span className="text-[11px] text-[#7E706B] block">Horário Avulso • {s.reason || 'Reservado'}</span>
+                        </div>
+                        <button
+                          onClick={() => removeBlockedSlot(s.id)}
+                          className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold text-[11px] transition-colors"
+                        >
+                          Desbloquear
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Turnos */}
+                    {scheduleSettings.blockedShifts.map(s => (
+                      <div key={s.id} className="p-2.5 bg-[#FAF6F3] rounded-xl border border-[#EFE4DE] flex items-center justify-between text-xs">
+                        <div>
+                          <span className="font-bold text-[#2C201C]">{formatDateBR(s.date)} — Turno da {s.shift === 'manha' ? 'Manhã' : 'Tarde'}</span>
+                          <span className="text-[11px] text-[#7E706B] block">{s.reason}</span>
+                        </div>
+                        <button
+                          onClick={() => removeBlockedShift(s.id)}
+                          className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold text-[11px] transition-colors"
+                        >
+                          Desbloquear
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Dias Inteiros */}
+                    {scheduleSettings.blockedDates.map(dateStr => (
+                      <div key={dateStr} className="p-2.5 bg-[#FAF6F3] rounded-xl border border-[#EFE4DE] flex items-center justify-between text-xs">
+                        <div>
+                          <span className="font-bold text-[#2C201C]">{formatDateBR(dateStr)}</span>
+                          <span className="text-[11px] text-rose-600 block">Dia Inteiro Bloqueado</span>
+                        </div>
+                        <button
+                          onClick={() => toggleBlockedDate(dateStr)}
+                          className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold text-[11px] transition-colors"
+                        >
+                          Desbloquear
+                        </button>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Atalho para Configurações Avançadas de Horários e Férias */}
+            {onNavigateTab && (
+              <div className="pt-4 mt-4 border-t border-[#EFE4DE] text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowBlockModal(false);
+                    onNavigateTab('disponibilidade');
+                  }}
+                  className="text-xs text-[#8B5A51] hover:underline font-semibold inline-flex items-center gap-1"
+                >
+                  <span>Abrir Configurações Avançadas (Dias de Trabalho, Férias e Grades)</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

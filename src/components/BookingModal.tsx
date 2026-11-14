@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Procedure } from '../types';
+import { toLocalDateString } from '../utils/dateUtils';
 import { 
   X, 
   Calendar as CalendarIcon, 
@@ -56,7 +57,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ initialProcedure, on
     for (let i = startOffset; i <= endOffset; i++) {
       const d = new Date();
       d.setDate(base.getDate() + i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toLocalDateString(d);
       const check = isDateSelectable(dateStr);
       const reqDuration = procedures.find(p => p.id === selectedProcId)?.durationMinutes || 90;
       const dayAvailability = check.selectable ? getAvailableSlotsForDate(dateStr, reqDuration) : null;
@@ -92,7 +93,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ initialProcedure, on
     if (newPeriod === 'mes_seguinte') offset = 30;
     if (newPeriod === 'dois_meses') offset = 60;
     base.setDate(base.getDate() + offset);
-    setSelectedDate(base.toISOString().split('T')[0]);
+    setSelectedDate(toLocalDateString(base));
   };
 
   // Dados da Cliente
@@ -471,7 +472,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ initialProcedure, on
                   <input
                     type="date"
                     required
-                    max={new Date().toISOString().split('T')[0]}
+                    max={toLocalDateString()}
                     value={clientBirthDate}
                     onChange={(e) => setClientBirthDate(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-amber-300 bg-white text-xs sm:text-sm text-[#2C201C] focus:outline-none focus:ring-2 focus:ring-[#8B5A51]"

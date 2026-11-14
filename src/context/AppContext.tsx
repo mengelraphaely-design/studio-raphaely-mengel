@@ -107,6 +107,8 @@ interface AppContextType {
   }) => Promise<{ success: boolean; appointment: Appointment }>;
   approveAppointment: (id: string) => Promise<void>;
   rejectAppointment: (id: string, reason?: string) => Promise<void>;
+  deleteAppointment: (id: string) => Promise<void>;
+  clearPastPendingAppointments: () => Promise<number>;
   syncFromCloud: () => Promise<void>;
   isSyncing: boolean;
   addAppointment: (appointment: Omit<Appointment, 'id'>) => Appointment;
@@ -305,18 +307,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               );
             }
 
-            // Atualiza status e campos de todos os agendamentos conforme a nuvem
-            const merged = cloudData.appointments!.map(cloudApp => {
-              return cloudApp;
-            });
-
-            // Preserva itens locais se existirem
-            for (const local of prev) {
-              if (!cloudMap.has(local.id)) {
-                merged.push(local);
-              }
-            }
-            return merged;
+            // A nuvem Supabase é a única fonte da verdade oficial dos agendamentos
+            return [...cloudData.appointments!];
           });
         }
 
@@ -894,10 +886,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // 7. Rapha Recusa Agendamento (Local + Nuvem Supabase)
   const rejectAppointment = async (id: string, reason?: string) => {
+    const rejectionNote = reason ? `Recusado: ${reason}` : 'Recusado pela Rapha';
+    let updatedNotes = rejectionNote;
+
     setAppointments(prev => prev.map(a => {
       if (a.id === id) {
-        const notes = reason ? `${a.notes || ''} (Recusado: ${reason})` : a.notes;
-        return { ...a, status: 'cancelado', notes };
+        updatedNotes = a.notes ? `${a.notes} (${rejectionNote})` : rejectionNote;
+        return { ...a, status: 'cancelado', notes: updatedNotes };
       }
       return a;
     }));
@@ -906,7 +901,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const { error } = await supabase
           .from('appointments')
-          .update({ status: 'cancelado' })
+          .update({ status: 'cancelado', notes: updatedNotes })
           .eq('id', id);
         if (error) {
           console.error('[Supabase Reject Error]:', error);
@@ -915,6 +910,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.error('[Supabase Reject Exception]:', e);
       }
     }
+  };
+
+  // 7.1. Exclusão Permanente de Agendamento (Remove de vez do Supabase e do Estado)
+  const deleteAppointment = async (id: string) => {
+    setAppointments(prev => prev.filter(a => a.id !== id));
+    const txId = `tx-app-${id}`;
+    setTransactions(prev => prev.filter(t => t.id !== txId));
+
+    if (supabase && isSupabaseConfigured) {
+      try {
+        await supabase.from('appointments').delete().eq('id', id);
+        await supabase.from('transactions').delete().eq('id', txId);
+      } catch (err) {
+        console.error('[Supabase Delete Appointment Error]:', err);
+      }
+    }
+  };
+
+  // 7.2. Limpar Solicitações Pendentes Antigas que Expiraram (data anterior a hoje)
+  const clearPastPendingAppointments = async (): Promise<number> => {
+    const today = getLocalDateStr();
+    const pastPendings = appointments.filter(a => a.status === 'pendente' && a.date < today);
+    if (pastPendings.length === 0) return 0;
+
+    const pastIds = pastPendings.map(a => a.id);
+    setAppointments(prev => prev.map(a => {
+      if (pastIds.includes(a.id)) {
+        return { ...a, status: 'cancelado' as AppointmentStatus, notes: `${a.notes || ''} (Expirado - data anterior)` };
+      }
+      return a;
+    }));
+
+    if (supabase && isSupabaseConfigured) {
+      try {
+        await supabase
+          .from('appointments')
+          .update({ status: 'cancelado', notes: 'Expirado (data anterior)' })
+          .in('id', pastIds);
+      } catch (err) {
+        console.error('[Supabase Clear Past Pendings Error]:', err);
+      }
+    }
+
+    return pastIds.length;
   };
 
   // 8. Atualizar Status (Local + Nuvem Supabase)
@@ -1265,6 +1304,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateAppointment,
         approveAppointment,
         rejectAppointment,
+        deleteAppointment,
+        clearPastPendingAppointments,
         updateAppointmentStatus,
         markReminderSent,
         markThankYouSent,

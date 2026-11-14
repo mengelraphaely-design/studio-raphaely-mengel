@@ -12,7 +12,8 @@ import {
   RotateCcw,
   BellRing,
   Lock,
-  RefreshCw
+  RefreshCw,
+  CalendarX
 } from 'lucide-react';
 import { AdminOverview } from './AdminOverview';
 import { AdminAgenda } from './AdminAgenda';
@@ -149,6 +150,19 @@ export const RaphaDashboard: React.FC = () => {
           )}
         </button>
 
+        {/* Bloquear Horários & Férias (Posicionado em destaque logo após a Agenda) */}
+        <button
+          onClick={() => setActiveTabLocal('disponibilidade')}
+          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2 ${
+            activeTab === 'disponibilidade'
+              ? 'bg-[#8B5A51] text-white shadow-xs'
+              : 'text-[#7E706B] hover:text-[#2C201C] hover:bg-[#FAF6F3]'
+          }`}
+        >
+          <CalendarX className="w-4 h-4" />
+          <span>Bloquear Horários</span>
+        </button>
+
         {/* Financeiro */}
         <button
           onClick={() => setActiveTabLocal('financeiro')}
@@ -217,19 +231,6 @@ export const RaphaDashboard: React.FC = () => {
           <span>Feedbacks</span>
         </button>
 
-        {/* Horários & Férias */}
-        <button
-          onClick={() => setActiveTabLocal('disponibilidade')}
-          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-2 ${
-            activeTab === 'disponibilidade'
-              ? 'bg-[#8B5A51] text-white shadow-xs'
-              : 'text-[#7E706B] hover:text-[#2C201C] hover:bg-[#FAF6F3]'
-          }`}
-        >
-          <Palmtree className="w-4 h-4" />
-          <span>Horários & Férias</span>
-        </button>
-
       </div>
 
       {/* Conteúdo Dinâmico da Aba Selecionada */}
@@ -242,7 +243,7 @@ export const RaphaDashboard: React.FC = () => {
             }} 
           />
         )}
-        {activeTab === 'agenda' && <AdminAgenda />}
+        {activeTab === 'agenda' && <AdminAgenda onNavigateTab={(tab) => setActiveTabLocal(tab)} />}
         {activeTab === 'financeiro' && <AdminFinancial />}
         {activeTab === 'clientes' && <AdminClients />}
         {activeTab === 'relacionamento' && <AdminRelationship />}

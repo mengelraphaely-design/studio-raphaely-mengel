@@ -169,92 +169,23 @@ export async function rescueLocalDataToSupabase(): Promise<void> {
   if (!supabase || !isSupabaseConfigured || typeof window === 'undefined') return;
 
   try {
-    const localAppointments: Appointment[] = [];
-    const localClients: Client[] = [];
-    const localTransactions: Transaction[] = [];
-    const localFeedbacks: Feedback[] = [];
-
-    // Vasculhar TODAS as chaves de localStorage que já existiram
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key) continue;
-
-      try {
-        const itemVal = localStorage.getItem(key);
-        if (!itemVal) continue;
-        const parsed = JSON.parse(itemVal);
-
-        if (Array.isArray(parsed)) {
-          if (key.includes('appointments')) {
-            for (const app of parsed) {
-              if (app && app.id && app.clientName && !localAppointments.some(a => a.id === app.id)) {
-                // Não migrar dados fictícios do mock inicial antigo
-                if (app.id !== 'app-1' && app.id !== 'app-2' && app.id !== 'app-3' && app.id !== 'app-4') {
-                  localAppointments.push(app);
-                } else if (app.notes && app.notes.includes('manual')) {
-                  localAppointments.push(app);
-                }
-              }
-            }
-          } else if (key.includes('clients')) {
-            for (const cli of parsed) {
-              if (cli && cli.id && cli.name && !localClients.some(c => c.id === cli.id)) {
-                // NUNCA resgatar clientes testes fictícios antigos
-                if (!MOCK_CLIENT_IDS.has(cli.id)) {
-                  localClients.push(cli);
-                }
-              }
-            }
-          } else if (key.includes('transactions')) {
-            for (const tx of parsed) {
-              if (tx && tx.id && tx.amount && !localTransactions.some(t => t.id === tx.id)) {
-                if (!tx.id.startsWith('tr-rec-') && !tx.id.startsWith('tr-desp-')) {
-                  localTransactions.push(tx);
-                }
-              }
-            }
-          } else if (key.includes('feedbacks')) {
-            for (const fb of parsed) {
-              if (fb && fb.id && fb.comment && !localFeedbacks.some(f => f.id === fb.id)) {
-                if (!fb.id.startsWith('feed-')) {
-                  localFeedbacks.push(fb);
-                }
-              }
-            }
-          }
-        }
-      } catch {
-        // ignora chaves que não sejam json
-      }
-    }
-
-    // Limpeza de segurança: garantir que nenhum cliente de mock permaneça no Supabase
+    // 1. Limpeza de segurança: garantir que nenhum cliente de mock permaneça no Supabase
     await supabase.from('clients').delete().in('id', Array.from(MOCK_CLIENT_IDS));
 
-    // Se encontrou dados locais (ex: os atendimentos manuais que a Rapha acabou de salvar no iPhone dela):
-    if (localClients.length > 0) {
-      console.log(`[Supabase Rescue] Enviando ${localClients.length} cliente(s) locais para a nuvem...`);
-      const clientRows = localClients.map(mapClientToRow);
-      await supabase.from('clients').upsert(clientRows, { onConflict: 'id' });
+    // 2. Limpeza de chaves de versões antigas do localStorage (v1 até v7)
+    // para evitar que agendamentos antigos/cancelados fiquem ressuscitando em loop
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (/^rapha_v[1-7]_/.test(key) || key.includes('mock') || key.includes('demo'))) {
+        keysToRemove.push(key);
+      }
     }
-
-    if (localAppointments.length > 0) {
-      console.log(`[Supabase Rescue] Enviando ${localAppointments.length} agendamento(s) locais da Rapha para a nuvem...`);
-      const appRows = localAppointments.map(mapAppointmentToRow);
-      await supabase.from('appointments').upsert(appRows, { onConflict: 'id' });
-    }
-
-    if (localTransactions.length > 0) {
-      const txRows = localTransactions.map(mapTransactionToRow);
-      await supabase.from('transactions').upsert(txRows, { onConflict: 'id' });
-    }
-
-    if (localFeedbacks.length > 0) {
-      const fbRows = localFeedbacks.map(mapFeedbackToRow);
-      await supabase.from('feedbacks').upsert(fbRows, { onConflict: 'id' });
+    for (const key of keysToRemove) {
+      localStorage.removeItem(key);
     }
   } catch (err) {
-    console.error('[Supabase Rescue] Erro ao sincronizar dados locais:', err);
+    console.error('[Supabase Rescue] Erro na limpeza inicial:', err);
   }
 }
 

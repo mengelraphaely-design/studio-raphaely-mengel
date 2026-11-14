@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Client, ClientSource } from '../types';
 import { openWhatsApp } from '../utils/whatsapp';
+import { toLocalDateString } from '../utils/dateUtils';
 
 export const AdminClients: React.FC = () => {
   const { clients, addClient, updateClient, procedures } = useApp();
@@ -89,7 +90,7 @@ export const AdminClients: React.FC = () => {
     e.preventDefault();
     if (!name.trim() || !phone.trim() || !birthDate.trim()) return;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = toLocalDateString();
 
     addClient({
       name: name.trim(),
@@ -377,7 +378,7 @@ export const AdminClients: React.FC = () => {
                 <input
                   type="date"
                   required
-                  max={new Date().toISOString().split('T')[0]}
+                  max={toLocalDateString()}
                   value={editBirthDate}
                   onChange={(e) => setEditBirthDate(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-amber-300 bg-white text-sm text-[#2C201C] focus:outline-none focus:ring-2 focus:ring-[#8B5A51]"
@@ -521,7 +522,7 @@ export const AdminClients: React.FC = () => {
                 <input
                   type="date"
                   required
-                  max={new Date().toISOString().split('T')[0]}
+                  max={toLocalDateString()}
                   value={birthDate}
                   onChange={(e) => setBirthDate(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-amber-300 bg-white text-sm text-[#2C201C] focus:outline-none focus:ring-2 focus:ring-[#8B5A51]"
